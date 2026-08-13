@@ -26,13 +26,8 @@ import { UsersPage } from './pages/admin/UsersPage';
 import { IntegrationsPage } from './pages/admin/IntegrationsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
 
-const AppContent: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+const AuthenticatedShell: React.FC = () => {
   const [currentModule, setCurrentModule] = useState<string>('dashboard');
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
 
   const renderModuleContent = () => {
     switch (currentModule) {
@@ -98,12 +93,35 @@ const AppContent: React.FC = () => {
   );
 };
 
+const AppGate: React.FC = () => {
+  const { isAuthenticated, isAuthLoading } = useAuth();
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 text-slate-400 dark:text-slate-600 text-xs font-mono">
+        Verificando sessão...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  // AssetProvider só monta depois que a sessão real do Supabase Auth existe,
+  // pra buscar os dados já com o JWT autenticado anexado (o RLS exige sessão
+  // autenticada) e pra recarregar do zero a cada novo login.
+  return (
+    <AssetProvider>
+      <AuthenticatedShell />
+    </AssetProvider>
+  );
+};
+
 export default function App() {
   return (
     <AuthProvider>
-      <AssetProvider>
-        <AppContent />
-      </AssetProvider>
+      <AppGate />
     </AuthProvider>
   );
 }

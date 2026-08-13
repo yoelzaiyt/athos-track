@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
-import { MOCK_USERS } from '../mock';
 import { supabase } from '../lib/supabaseClient';
 import { rowToClient, rowToUnit } from '../lib/mappers';
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  isAuthLoading: boolean;
   user: UserProfile | null;
   theme: ThemeMode;
   selectedClientId: string; // 'all' or client ID
@@ -14,7 +15,7 @@ interface AuthContextType {
   availableUnits: CompanyUnit[];
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
-  login: (email: string, pass: string) => boolean;
+  login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
   setRole: (role: UserRole) => void;
   setSelectedClientId: (id: string) => void;
@@ -24,9 +25,51 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Deriva o UserProfile do app a partir da sessão do Supabase Auth: procura uma
+// linha em user_profiles pelo e-mail (nem toda conta de auth tem uma linha
+// vinculada ainda — a seed não preenche auth_user_id) e, se achar e ainda não
+// estiver vinculada, faz o bind oportunista de auth_user_id nessa primeira vez.
+// Sem match, cai num perfil mínimo derivado só da sessão (papel VIEWER, o mais
+// restrito, em vez de assumir permissão).
+async function resolveUserProfile(session: Session): Promise<UserProfile> {
+  const authUser = session.user;
+  const { data: row, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('email', authUser.email)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[AuthContext] Failed to resolve user profile:', error.message);
+  }
+
+  if (row) {
+    if (!row.auth_user_id) {
+      supabase.from('user_profiles').update({ auth_user_id: authUser.id }).eq('id', row.id);
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      avatarUrl: row.avatar_url ?? undefined,
+      clientId: row.client_id ?? undefined,
+      unitId: row.unit_id ?? undefined,
+    };
+  }
+
+  return {
+    id: authUser.id,
+    name: (authUser.email || 'Usuário').split('@')[0],
+    email: authUser.email || '',
+    role: 'VIEWER',
+  };
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true); // Default logged in for demo
-  const [user, setUser] = useState<UserProfile | null>(MOCK_USERS[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('athos_theme_mode');
     return (saved === 'light' || saved === 'dark') ? saved : 'dark';
@@ -36,11 +79,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [clients, setClients] = useState<CompanyClient[]>([]);
   const [units, setUnits] = useState<CompanyUnit[]>([]);
 
+  // Sessão real do Supabase Auth: checa a sessão existente no boot (localStorage,
+  // gerenciado pelo próprio supabase-js) e escuta mudanças (login/logout/refresh
+  // de token) para manter isAuthenticated/user sempre em sincronia com a sessão real.
+  useEffect(() => {
+    let cancelled = false;
+
+    const applySession = async (session: Session | null) => {
+      if (!session) {
+        if (!cancelled) {
+          setIsAuthenticated(false);
+          setUser(null);
+        }
+        return;
+      }
+      const profile = await resolveUserProfile(session);
+      if (!cancelled) {
+        setUser(profile);
+        setIsAuthenticated(true);
+      }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      applySession(session).finally(() => {
+        if (!cancelled) setIsAuthLoading(false);
+      });
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Clientes/unidades reais do Supabase — alimentam os seletores (TopBar, filtros
-  // de página, dropdowns de formulário como DeviceFormModal). O login/sessão em
-  // si continua mockado (ver login/logout abaixo); só a fonte de client/unit
-  // trocou, para que criar um novo ativo/cerca/motorista referencie um client_id/
-  // unit_id que exista de verdade no banco (senão a gravação falha por FK).
+  // de página, dropdowns de formulário como DeviceFormModal).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -78,31 +155,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setThemeState(mode);
   };
 
-  const login = (email: string, pass: string) => {
-    if (email === 'demo@athostrack.com' && pass === 'demo') {
-      setIsAuthenticated(true);
-      setUser(MOCK_USERS[0]);
-      return true;
+  const login = async (email: string, pass: string): Promise<boolean> => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      console.error('[AuthContext] login failed:', error.message);
+      return false;
     }
-    // Allow any non-empty standard login for demo testing
-    if (email.trim().length > 0 && pass.trim().length > 0) {
-      setIsAuthenticated(true);
-      setUser({
-        id: 'usr_custom',
-        name: email.split('@')[0].toUpperCase(),
-        email: email,
-        role: 'ATHOS_ADMIN',
-      });
-      return true;
-    }
-    return false;
+    // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
+    return true;
   };
 
   const logout = () => {
-    setIsAuthenticated(false);
-    setUser(null);
+    supabase.auth.signOut();
   };
 
+  // Preview local de papel (RBAC) para testar a UI sob outras permissões — não
+  // grava no banco. Só faz sentido enquanto o RLS não distingue papéis (hoje é
+  // por sessão autenticada ou não, não por role); virar "de verdade" exigiria
+  // policies por role, o que é um projeto à parte.
   const setRole = (role: UserRole) => {
     if (user) {
       setUser({ ...user, role });
@@ -140,6 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         isAuthenticated,
+        isAuthLoading,
         user,
         theme,
         selectedClientId,

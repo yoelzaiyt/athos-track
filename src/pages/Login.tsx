@@ -2,26 +2,39 @@ import React, { useState } from 'react';
 import { Radio, ShieldCheck, ArrowRight, Lock, Mail, Eye, EyeOff, Sparkles, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+const DEMO_EMAIL = 'demo@athostrack.io';
+const DEMO_PASSWORD = 'athosdemo123';
+
 export const Login: React.FC = () => {
   const { login, theme, toggleTheme } = useAuth();
-  const [email, setEmail] = useState('demo@athostrack.com');
-  const [password, setPassword] = useState('demo');
+  const [email, setEmail] = useState(DEMO_EMAIL);
+  const [password, setPassword] = useState(DEMO_PASSWORD);
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(email, password);
+    setErrorMsg('');
+    setIsSubmitting(true);
+    const success = await login(email, password);
+    setIsSubmitting(false);
     if (!success) {
       setErrorMsg('Credenciais inválidas. Utilize o ambiente demonstrativo abaixo.');
     }
   };
 
-  const handleFillDemo = () => {
-    setEmail('demo@athostrack.com');
-    setPassword('demo');
-    login('demo@athostrack.com', 'demo');
+  const handleFillDemo = async () => {
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
+    setErrorMsg('');
+    setIsSubmitting(true);
+    const success = await login(DEMO_EMAIL, DEMO_PASSWORD);
+    setIsSubmitting(false);
+    if (!success) {
+      setErrorMsg('Não foi possível acessar o ambiente demonstrativo agora.');
+    }
   };
 
   return (
@@ -61,13 +74,14 @@ export const Login: React.FC = () => {
               Ambiente Demonstrativo
             </div>
             <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-              demo@athostrack.com / senha: demo
+              {DEMO_EMAIL} / senha: {DEMO_PASSWORD}
             </div>
           </div>
           <button
             type="button"
             onClick={handleFillDemo}
-            className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg shadow-md shadow-cyan-600/30 transition-all shrink-0"
+            disabled={isSubmitting}
+            className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-md shadow-cyan-600/30 transition-all shrink-0"
           >
             Acessar
           </button>
@@ -146,9 +160,10 @@ export const Login: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/20 text-sm mt-2"
+            disabled={isSubmitting}
+            className="w-full py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/20 text-sm mt-2"
           >
-            <span>Entrar na Central</span>
+            <span>{isSubmitting ? 'Entrando...' : 'Entrar na Central'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>

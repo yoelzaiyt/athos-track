@@ -1133,7 +1133,7 @@ export const MOCK_USERS: UserProfile[] = [
   {
     id: 'usr_01',
     name: 'Demonstração ATHOS',
-    email: 'demo@athostrack.com',
+    email: 'demo@athostrack.io',
     role: 'ATHOS_ADMIN',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150',
   },
