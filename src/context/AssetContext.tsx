@@ -10,6 +10,8 @@ import {
   MaintenanceRecord,
   TripRecord,
   CartRecovery,
+  SealStatus,
+  SealTriggerMethod,
 } from '../types';
 import {
   MOCK_ASSETS,
@@ -51,6 +53,8 @@ interface AssetContextType {
   updateAsset: (assetId: string, updates: Partial<AssetDevice>) => void;
   deleteAsset: (assetId: string) => void;
   toggleVehicleBlock: (assetId: string) => void;
+  toggleDoorLock: (assetId: string) => void;
+  registerSealEvent: (shipmentId: string, status: SealStatus, trigger: SealTriggerMethod) => void;
   addDriver: (driver: Driver) => void;
   updateDriver: (driverId: string, updates: Partial<Driver>) => void;
   deleteDriver: (driverId: string) => void;
@@ -80,7 +84,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [assets, setAssets] = useState<AssetDevice[]>(MOCK_ASSETS);
   const [alerts, setAlerts] = useState<SystemAlert[]>(MOCK_ALERTS);
   const [geofences, setGeofences] = useState<Geofence[]>(MOCK_GEOFENCES);
-  const [shipments] = useState<CargoShipment[]>(MOCK_CARGO_SHIPMENTS);
+  const [shipments, setShipments] = useState<CargoShipment[]>(MOCK_CARGO_SHIPMENTS);
   const [drivers, setDrivers] = useState<Driver[]>(MOCK_DRIVERS);
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(MOCK_MAINTENANCE);
   const [trips, setTrips] = useState<TripRecord[]>(MOCK_TRIPS);
@@ -227,6 +231,22 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
+  const toggleDoorLock = (assetId: string) => {
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, isDoorLocked: !a.isDoorLocked } : a))
+    );
+  };
+
+  const registerSealEvent = (shipmentId: string, status: SealStatus, trigger: SealTriggerMethod) => {
+    setShipments((prev) =>
+      prev.map((s) =>
+        s.id === shipmentId
+          ? { ...s, sealStatus: status, sealLastTrigger: trigger, sealLastEventTime: 'Agora' }
+          : s
+      )
+    );
+  };
+
   const addDriver = (driver: Driver) => {
     setDrivers((prev) => [driver, ...prev]);
   };
@@ -370,6 +390,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateAsset,
         deleteAsset,
         toggleVehicleBlock,
+        toggleDoorLock,
+        registerSealEvent,
         addDriver,
         updateDriver,
         deleteDriver,

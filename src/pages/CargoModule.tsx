@@ -1,13 +1,40 @@
 import React, { useState } from 'react';
-import { PackageCheck, Truck, MapPin, Clock, ShieldCheck, Tag, Thermometer, CheckCircle2, Map as MapIcon } from 'lucide-react';
+import {
+  PackageCheck,
+  Truck,
+  MapPin,
+  Clock,
+  ShieldCheck,
+  ShieldAlert,
+  Tag,
+  Thermometer,
+  CheckCircle2,
+  Map as MapIcon,
+  Lock,
+  Unlock,
+  Radio,
+  Nfc,
+  CreditCard,
+  MessageSquare,
+  Cloud,
+} from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetIcon } from '../components/common/AssetIconRegistry';
+import { SealTriggerMethod } from '../types';
+
+const SEAL_TRIGGER_OPTIONS: { value: SealTriggerMethod; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: 'rfid', label: 'RFID', icon: Radio },
+  { value: 'nfc', label: 'NFC', icon: Nfc },
+  { value: 'registered_card', label: 'Cartão Registrado', icon: CreditCard },
+  { value: 'sms', label: 'SMS', icon: MessageSquare },
+  { value: 'platform', label: 'Plataforma', icon: Cloud },
+];
 
 export const CargoModule: React.FC = () => {
-  const { shipments, getFilteredAssets } = useAssets();
+  const { shipments, getFilteredAssets, registerSealEvent } = useAssets();
   const { selectedClientId, selectedUnitId } = useAuth();
   const [showMap, setShowMap] = useState(false);
 
@@ -25,6 +52,19 @@ export const CargoModule: React.FC = () => {
         return 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20';
       default:
         return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+    }
+  };
+
+  const getSealBadge = (status?: string) => {
+    switch (status) {
+      case 'sealed':
+        return { classes: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20', label: 'Lacrado', icon: Lock };
+      case 'open':
+        return { classes: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20', label: 'Aberto', icon: Unlock };
+      case 'tampered':
+        return { classes: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 animate-pulse', label: 'Violado', icon: ShieldAlert };
+      default:
+        return null;
     }
   };
 
@@ -76,7 +116,9 @@ export const CargoModule: React.FC = () => {
 
       {/* Cargo Timeline Cards List */}
       <div className="space-y-4">
-        {shipments.map((cargo) => (
+        {shipments.map((cargo) => {
+          const seal = getSealBadge(cargo.sealStatus);
+          return (
           <div
             key={cargo.id}
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
@@ -98,6 +140,11 @@ export const CargoModule: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-3">
+                {seal && (
+                  <span className={`px-2.5 py-1 text-[10px] font-bold font-mono uppercase rounded-full border flex items-center gap-1 ${seal.classes}`}>
+                    <seal.icon className="w-3 h-3" /> {seal.label}
+                  </span>
+                )}
                 <div className="text-right">
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-semibold">Previsão ETA</div>
                   <div className="text-xs font-bold font-mono text-cyan-600 dark:text-cyan-400">{cargo.eta}</div>
@@ -171,8 +218,33 @@ export const CargoModule: React.FC = () => {
                 Rastrear no Mapa →
               </button>
             </div>
+
+            {/* Lacre Eletrônico: simulação de eventos por tecnologia */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 mr-1">
+                Simular Evento de Lacre:
+              </span>
+              {SEAL_TRIGGER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => registerSealEvent(cargo.id, 'open', opt.value)}
+                  className="px-2.5 py-1 text-[10px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500/15 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1 transition-colors"
+                  title={`Abrir lacre via ${opt.label}`}
+                >
+                  <opt.icon className="w-3 h-3" /> {opt.label}
+                </button>
+              ))}
+              <button
+                onClick={() => registerSealEvent(cargo.id, 'sealed', 'platform')}
+                className="px-2.5 py-1 text-[10px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1 transition-colors"
+                title="Fechar lacre"
+              >
+                <Lock className="w-3 h-3" /> Lacrar
+              </button>
+            </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -102,6 +102,14 @@ export interface TelemetryData {
   gpsAccuracy?: number; // e.g. 8 (meters)
   positionSource?: PositionSource;
   packetTimestamp?: string;
+  // Sensor de combustível calibrado (percentual + volume, com capacidade do tanque)
+  fuelPercent?: number; // 0-100
+  fuelVolumeLiters?: number;
+  fuelTankCapacityLiters?: number;
+  possibleFuelTheft?: boolean; // queda abrupta de volume fora de reabastecimento
+  // Diagnóstico de motor via OBD-II / barramento CAN
+  canBusConnected?: boolean;
+  obdErrorCodes?: string[];
 }
 
 export interface AssetDevice {
@@ -126,6 +134,8 @@ export interface AssetDevice {
     | 'MQTT'
     | 'HTTP'
     | 'BLE Gateway'
+    | 'RFID'
+    | 'NFC'
     | 'Custom';
   responsibleName?: string;
   driverName?: string;
@@ -136,7 +146,9 @@ export interface AssetDevice {
   lastMovement: string;
   // Fleet control extensions
   isBlocked?: boolean; // remote ignition immobilization (bloqueio de veículo)
+  isDoorLocked?: boolean; // trava elétrica remota de porta (independente do bloqueio de ignição)
   speedLimitKmh?: number; // per-vehicle speed monitoring threshold
+  cameraChannelsCount?: number; // nº de câmeras embarcadas disponíveis para snapshot remoto (0 = sem câmera)
   assignedDriverId?: string;
   lastMaintenanceDate?: string;
   nextMaintenanceDue?: string;
@@ -213,7 +225,10 @@ export type AlertType =
   | 'speeding'
   | 'extended_stop'
   | 'route_diverted'
-  | 'impact';
+  | 'impact'
+  | 'fall_detected'
+  | 'fuel_theft'
+  | 'seal_tampered';
 
 export interface SystemAlert {
   id: string;
@@ -251,6 +266,17 @@ export interface Geofence {
   targetCategory?: AssetCategory | 'all';
 }
 
+export type SealStatus = 'sealed' | 'open' | 'tampered';
+
+export type SealTriggerMethod =
+  | 'button'
+  | 'rfid'
+  | 'nfc'
+  | 'registered_card'
+  | 'unregistered_card'
+  | 'sms'
+  | 'platform';
+
 export interface CargoShipment {
   id: string;
   code: string;
@@ -269,6 +295,10 @@ export interface CargoShipment {
   longitude: number;
   progressPercent: number;
   eventsCount: number;
+  // Lacre eletrônico (electronic seal)
+  sealStatus?: SealStatus;
+  sealLastTrigger?: SealTriggerMethod;
+  sealLastEventTime?: string;
 }
 
 export interface FleetVehicle {

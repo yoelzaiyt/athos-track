@@ -23,6 +23,12 @@ import {
   BedDouble,
   IdCard,
   Map as MapIcon,
+  Fuel,
+  DoorOpen,
+  DoorClosed,
+  Cpu,
+  Camera,
+  AlertOctagon,
 } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { DataTable, Column } from '../components/common/DataTable';
@@ -30,6 +36,7 @@ import { DeviceFormModal } from '../components/common/DeviceFormModal';
 import { DriverFormModal } from '../components/common/DriverFormModal';
 import { MaintenanceFormModal } from '../components/common/MaintenanceFormModal';
 import { TripFormModal } from '../components/common/TripFormModal';
+import { CameraViewerModal } from '../components/common/CameraViewerModal';
 import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +52,7 @@ export const FleetModule: React.FC = () => {
     updateAsset,
     deleteAsset,
     toggleVehicleBlock,
+    toggleDoorLock,
     shipments,
     drivers,
     addDriver,
@@ -62,6 +70,7 @@ export const FleetModule: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<'veiculos' | 'motoristas' | 'rotas' | 'manutencao'>('veiculos');
   const [showMap, setShowMap] = useState(false);
+  const [cameraAsset, setCameraAsset] = useState<AssetDevice | null>(null);
 
   // Modal state por aba
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
@@ -170,6 +179,57 @@ export const FleetModule: React.FC = () => {
           {row.telemetry.ignition !== false ? 'LIGADA' : 'DESLIGADA'}
         </span>
       ),
+    },
+    {
+      header: 'Combustível',
+      accessor: (row) => {
+        if (row.telemetry.fuelPercent === undefined) return <span className="text-slate-400 dark:text-slate-600">—</span>;
+        return (
+          <div className="flex flex-col gap-0.5 min-w-[90px]">
+            <div className="flex items-center gap-1.5">
+              <Fuel
+                className={`w-3.5 h-3.5 ${
+                  row.telemetry.possibleFuelTheft
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : row.telemetry.fuelPercent < 25
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}
+              />
+              <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{row.telemetry.fuelPercent}%</span>
+              {row.telemetry.possibleFuelTheft && (
+                <span title="Possível furto de combustível">
+                  <AlertOctagon className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                </span>
+              )}
+            </div>
+            {row.telemetry.fuelVolumeLiters !== undefined && row.telemetry.fuelTankCapacityLiters !== undefined && (
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                {row.telemetry.fuelVolumeLiters}L / {row.telemetry.fuelTankCapacityLiters}L
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      header: 'Diagnóstico OBD/CAN',
+      accessor: (row) => {
+        const codes = row.telemetry.obdErrorCodes || [];
+        if (!row.telemetry.canBusConnected) return <span className="text-slate-400 dark:text-slate-600">Sem leitor CAN</span>;
+        return codes.length > 0 ? (
+          <span
+            title={codes.join('\n')}
+            className="px-2 py-0.5 text-[10px] font-bold font-mono rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1 w-fit"
+          >
+            <AlertOctagon className="w-3 h-3" /> {codes.length} código{codes.length > 1 ? 's' : ''}
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 text-[10px] font-bold font-mono rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 w-fit">
+            <Cpu className="w-3 h-3" /> OK
+          </span>
+        );
+      },
     },
     {
       header: 'Último Ping',
@@ -455,13 +515,19 @@ export const FleetModule: React.FC = () => {
       {/* ===================== VEÍCULOS ===================== */}
       {activeSubTab === 'veiculos' && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
             <StatCard title="Veículos na Frota" value={fleetAssets.length} icon={Truck} variant="amber" />
             <StatCard title="Em Movimento" value={movingVehicles.length} icon={Navigation} variant="emerald" />
             <StatCard title="Excesso de Velocidade" value={speedingVehicles.length} icon={SpeedIcon} variant="rose" />
             <StatCard title="Bloqueados (RF)" value={blockedVehicles.length} icon={Lock} variant="indigo" />
             <StatCard title="Cargas Vinculadas" value={shipments.length} icon={Shield} variant="cyan" />
             <StatCard title="Manutenções Pendentes" value={scheduledMaint.length + lateMaint.length} icon={Wrench} variant="slate" />
+            <StatCard
+              title="Alertas de Combustível"
+              value={fleetAssets.filter((v) => v.telemetry.possibleFuelTheft).length}
+              icon={Fuel}
+              variant="rose"
+            />
           </div>
 
           <div className="flex justify-end gap-2">
@@ -518,6 +584,26 @@ export const FleetModule: React.FC = () => {
                 >
                   {item.isBlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                 </button>
+                <button
+                  onClick={() => toggleDoorLock(item.id)}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    item.isDoorLocked
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-cyan-500/15 hover:text-cyan-600 dark:hover:text-cyan-400'
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                  }`}
+                  title={item.isDoorLocked ? 'Destravar porta remotamente' : 'Travar porta remotamente'}
+                >
+                  {item.isDoorLocked ? <DoorClosed className="w-3.5 h-3.5" /> : <DoorOpen className="w-3.5 h-3.5" />}
+                </button>
+                {!!item.cameraChannelsCount && (
+                  <button
+                    onClick={() => setCameraAsset(item)}
+                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-indigo-500/15 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                    title="Ver câmeras embarcadas"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setEditingVehicle(item);
@@ -797,6 +883,8 @@ export const FleetModule: React.FC = () => {
         vehicles={fleetAssets}
         drivers={drivers}
       />
+
+      <CameraViewerModal isOpen={!!cameraAsset} onClose={() => setCameraAsset(null)} asset={cameraAsset} />
     </div>
   );
 };

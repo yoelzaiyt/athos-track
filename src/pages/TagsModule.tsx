@@ -119,7 +119,7 @@ export const TagsModule: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           {/* Protocol Selector Pills */}
           <div className="flex flex-wrap items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 rounded-xl text-xs shadow-sm">
-            {['all', 'GT06', 'Traccar Compatible', 'Wialon IPS', 'JT/T808', 'Suntech', 'Queclink', 'MQTT', 'HTTP', 'BLE Gateway', 'Custom'].map((p) => (
+            {['all', 'GT06', 'Traccar Compatible', 'Wialon IPS', 'JT/T808', 'Suntech', 'Queclink', 'MQTT', 'HTTP', 'BLE Gateway', 'RFID', 'NFC', 'Custom'].map((p) => (
               <button
                 key={p}
                 onClick={() => setProtocolFilter(p)}

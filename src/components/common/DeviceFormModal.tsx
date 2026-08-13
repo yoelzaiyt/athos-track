@@ -23,6 +23,8 @@ const PROTOCOL_OPTIONS: AssetDevice['protocol'][] = [
   'MQTT',
   'HTTP',
   'BLE Gateway',
+  'RFID',
+  'NFC',
   'Custom',
 ];
 
