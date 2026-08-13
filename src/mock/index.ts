@@ -11,6 +11,7 @@ import {
   Driver,
   MaintenanceRecord,
   TripRecord,
+  CartRecovery,
 } from '../types';
 
 export const MOCK_CLIENTS: CompanyClient[] = [
@@ -776,6 +777,20 @@ export const MOCK_ALERTS: SystemAlert[] = [
     acknowledged: true,
     latitude: -23.3555,
     longitude: -46.8788,
+  },
+];
+
+export const MOCK_RECOVERIES: CartRecovery[] = [
+  {
+    id: 'rec_01',
+    assetId: 'ast_cart_01',
+    assetName: 'Carrinho de Compras #104',
+    assetCode: 'CAR-104',
+    unitName: 'Assaí Atacadista - Interlagos',
+    recoveredBy: 'Marcos Segurança - Turno Tarde',
+    signatureName: 'Marcos R. Silva',
+    notes: 'Carrinho encontrado no estacionamento externo, sem avarias. Devolvido à zona interna.',
+    timestamp: 'Ontem, 18:42',
   },
 ];
 

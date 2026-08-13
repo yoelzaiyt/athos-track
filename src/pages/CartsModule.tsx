@@ -1,20 +1,24 @@
 import React, { useState } from 'react';
-import { ShoppingCart, AlertCircle, BatteryLow, ShieldAlert, Wrench, Radio, MapPin, CheckCircle2, Map as MapIcon } from 'lucide-react';
+import { ShoppingCart, AlertCircle, BatteryLow, ShieldAlert, Wrench, Radio, MapPin, CheckCircle2, Map as MapIcon, ShieldCheck, Camera } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { DataTable, Column } from '../components/common/DataTable';
 import { LiveMap } from '../components/map/LiveMap';
+import { RecoveryFormModal } from '../components/common/RecoveryFormModal';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
 import { AssetIcon } from '../components/common/AssetIconRegistry';
 
 export const CartsModule: React.FC = () => {
-  const { selectedClientId, selectedUnitId } = useAuth();
-  const { getFilteredAssets, setSelectedAsset } = useAssets();
+  const { selectedClientId, selectedUnitId, user } = useAuth();
+  const { getFilteredAssets, setSelectedAsset, recoveries, recoverAsset } = useAssets();
   const [showMap, setShowMap] = useState(false);
+  const [recoveringAsset, setRecoveringAsset] = useState<AssetDevice | null>(null);
 
   const allAssets = getFilteredAssets(selectedClientId, selectedUnitId);
   const cartAssets = allAssets.filter((a) => a.category === 'cart');
+  const cartAssetIds = new Set(cartAssets.map((c) => c.id));
+  const cartRecoveries = recoveries.filter((r) => cartAssetIds.has(r.assetId));
 
   // Realism supermarket numbers
   const totalCartsSimulated = 250;
@@ -286,6 +290,64 @@ export const CartsModule: React.FC = () => {
         keyExtractor={(item) => item.id}
         searchPlaceholder="Buscar por patrimônio, tag BLE ou loja..."
         onRowClick={(item) => setSelectedAsset(item)}
+        actions={(item) => (
+          <button
+            onClick={() => setRecoveringAsset(item)}
+            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-500/15 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            title="Registrar recuperação do carrinho"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+          </button>
+        )}
+      />
+
+      {/* Histórico de Recuperações */}
+      {cartRecoveries.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3 transition-colors">
+          <div className="flex items-center gap-2 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Últimas Recuperações Registradas</span>
+          </div>
+          <div className="space-y-2">
+            {cartRecoveries.slice(0, 5).map((rec) => (
+              <div
+                key={rec.id}
+                className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80"
+              >
+                {rec.photoDataUrl ? (
+                  <img src={rec.photoDataUrl} alt="Evidência" className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-800 shrink-0" />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0 text-slate-400">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-900 dark:text-slate-100 font-mono text-xs">{rec.assetCode}</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">{rec.timestamp}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Recuperado por <strong className="text-slate-700 dark:text-slate-200">{rec.recoveredBy}</strong>
+                    {rec.notes && <span> — {rec.notes}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <RecoveryFormModal
+        isOpen={!!recoveringAsset}
+        onClose={() => setRecoveringAsset(null)}
+        asset={recoveringAsset}
+        defaultRecoveredBy={user?.name}
+        onSave={(recovery) => {
+          if (recoveringAsset) {
+            recoverAsset(recoveringAsset.id, recovery);
+          }
+          setRecoveringAsset(null);
+        }}
       />
     </div>
   );

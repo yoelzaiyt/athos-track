@@ -294,6 +294,20 @@ export interface RoutePoint {
   event?: string;
 }
 
+export interface CartRecovery {
+  id: string;
+  assetId: string;
+  assetName: string;
+  assetCode: string;
+  unitName: string;
+  recoveredBy: string;
+  signatureName: string;
+  notes?: string;
+  photoDataUrl?: string;
+  relatedAlertId?: string;
+  timestamp: string;
+}
+
 export interface SystemIntegration {
   id: string;
   name: string;

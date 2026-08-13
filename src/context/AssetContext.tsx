@@ -9,6 +9,7 @@ import {
   Driver,
   MaintenanceRecord,
   TripRecord,
+  CartRecovery,
 } from '../types';
 import {
   MOCK_ASSETS,
@@ -18,6 +19,7 @@ import {
   MOCK_DRIVERS,
   MOCK_MAINTENANCE,
   MOCK_TRIPS,
+  MOCK_RECOVERIES,
 } from '../mock';
 
 interface AssetContextType {
@@ -28,6 +30,7 @@ interface AssetContextType {
   drivers: Driver[];
   maintenanceRecords: MaintenanceRecord[];
   trips: TripRecord[];
+  recoveries: CartRecovery[];
   selectedAsset: AssetDevice | null;
   searchQuery: string;
   categoryFilter: AssetCategory | 'all';
@@ -57,6 +60,7 @@ interface AssetContextType {
   addTrip: (trip: TripRecord) => void;
   updateTrip: (tripId: string, updates: Partial<TripRecord>) => void;
   deleteTrip: (tripId: string) => void;
+  recoverAsset: (assetId: string, recovery: Omit<CartRecovery, 'id' | 'assetId' | 'assetName' | 'assetCode' | 'unitName' | 'timestamp'>) => void;
   getFilteredAssets: (clientId?: string, unitId?: string) => AssetDevice[];
   getStats: (clientId?: string, unitId?: string) => {
     total: number;
@@ -80,6 +84,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [drivers, setDrivers] = useState<Driver[]>(MOCK_DRIVERS);
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(MOCK_MAINTENANCE);
   const [trips, setTrips] = useState<TripRecord[]>(MOCK_TRIPS);
+  const [recoveries, setRecoveries] = useState<CartRecovery[]>(MOCK_RECOVERIES);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
@@ -258,6 +263,35 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTrips((prev) => prev.filter((t) => t.id !== tripId));
   };
 
+  const recoverAsset = (
+    assetId: string,
+    recovery: Omit<CartRecovery, 'id' | 'assetId' | 'assetName' | 'assetCode' | 'unitName' | 'timestamp'>
+  ) => {
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset) return;
+
+    const record: CartRecovery = {
+      ...recovery,
+      id: `rec_${Date.now()}`,
+      assetId: asset.id,
+      assetName: asset.name,
+      assetCode: asset.code,
+      unitName: asset.unitName,
+      timestamp: 'Agora',
+    };
+    setRecoveries((prev) => [record, ...prev]);
+
+    // Ativo volta ao estado normal dentro do perímetro
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, status: 'available', geofenceName: undefined } : a))
+    );
+
+    // Fecha automaticamente qualquer alerta em aberto vinculado a este ativo
+    setAlerts((prev) =>
+      prev.map((alt) => (alt.assetId === assetId && !alt.acknowledged ? { ...alt, acknowledged: true } : alt))
+    );
+  };
+
   const getFilteredAssets = (clientId = 'all', unitId = 'all'): AssetDevice[] => {
     return assets.filter((asset) => {
       if (clientId !== 'all' && asset.clientId !== clientId) return false;
@@ -315,6 +349,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         drivers,
         maintenanceRecords,
         trips,
+        recoveries,
         selectedAsset,
         searchQuery,
         categoryFilter,
@@ -344,6 +379,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addTrip,
         updateTrip,
         deleteTrip,
+        recoverAsset,
         getFilteredAssets,
         getStats,
       }}
