@@ -17,6 +17,7 @@ import {
   AssetRecoveryCase,
   RouteTemplate,
   AssetPairing,
+  TrafficSegment,
 } from '../types';
 
 export const MOCK_CLIENTS: CompanyClient[] = [
@@ -1560,5 +1561,80 @@ export const MOCK_ASSET_PAIRINGS: AssetPairing[] = [
     secondaryAssetName: 'Carga de Eletrônicos Lote #8841',
     maxDistanceMeters: 500,
     active: true,
+  },
+];
+
+export const MOCK_TRAFFIC_SEGMENTS: TrafficSegment[] = [
+  {
+    id: 'traf_01',
+    roadName: 'Marginal Pinheiros (sentido Castello Branco)',
+    coordinates: [
+      [-23.6180, -46.6980],
+      [-23.6050, -46.6870],
+      [-23.5930, -46.6790],
+    ],
+    congestionLevel: 'heavy',
+    avgSpeedKmh: 12,
+    updatedAt: 'Há 2 min',
+  },
+  {
+    id: 'traf_02',
+    roadName: 'Rodovia Castello Branco (km 28-32)',
+    coordinates: [
+      [-23.3700, -46.9200],
+      [-23.3560, -46.8782],
+      [-23.3410, -46.8450],
+    ],
+    congestionLevel: 'moderate',
+    avgSpeedKmh: 48,
+    updatedAt: 'Há 3 min',
+  },
+  {
+    id: 'traf_03',
+    roadName: 'Av. Interlagos',
+    coordinates: [
+      [-23.6800, -46.6850],
+      [-23.6600, -46.6650],
+      [-23.6414, -46.6448],
+    ],
+    congestionLevel: 'stopped',
+    avgSpeedKmh: 3,
+    updatedAt: 'Há 1 min',
+  },
+  {
+    id: 'traf_04',
+    roadName: 'Rodovia Bandeirantes (sentido Jundiaí)',
+    coordinates: [
+      [-23.2450, -46.9012],
+      [-23.2150, -46.8950],
+      [-23.1857, -46.8892],
+    ],
+    congestionLevel: 'free',
+    avgSpeedKmh: 92,
+    updatedAt: 'Há 4 min',
+  },
+  {
+    id: 'traf_05',
+    roadName: 'Av. Assaí - Zona Sul',
+    coordinates: [
+      [-23.5300, -46.7600],
+      [-23.5200, -46.7500],
+      [-23.5080, -46.7380],
+    ],
+    congestionLevel: 'moderate',
+    avgSpeedKmh: 35,
+    updatedAt: 'Há 2 min',
+  },
+  {
+    id: 'traf_06',
+    roadName: 'Av. Paulista',
+    coordinates: [
+      [-23.5670, -46.6560],
+      [-23.5610, -46.6540],
+      [-23.5550, -46.6520],
+    ],
+    congestionLevel: 'heavy',
+    avgSpeedKmh: 9,
+    updatedAt: 'Agora',
   },
 ];

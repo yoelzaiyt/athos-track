@@ -36,6 +36,11 @@ import {
   Activity,
   FileText,
   SlidersHorizontal,
+  ChevronDown,
+  Mountain,
+  Moon,
+  Route as RouteIcon,
+  TrafficCone,
 } from 'lucide-react';
 import {
   AssetDevice,
@@ -140,7 +145,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   onOpenAlerts,
   onOpenReports,
 }) => {
-  const { assets, geofences, selectedAsset, setSelectedAsset } = useAssets();
+  const { assets, geofences, trafficSegments, selectedAsset, setSelectedAsset } = useAssets();
   const { theme } = useAuth();
 
   // Tema dos tiles do mapa: automático pelo horário de Brasília, independente do
@@ -168,6 +173,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   const floorPlanLayerRef = useRef<L.ImageOverlay | null>(null);
   const pickedPointMarkerRef = useRef<L.Marker | null>(null);
   const polygonDraftLayerRef = useRef<L.Layer[]>([]);
+  const trafficLayersRef = useRef<L.Layer[]>([]);
 
   const savedPrefs = mapProvider.loadPreferences();
 
@@ -192,6 +198,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   });
 
   const [showLayerMenu, setShowLayerMenu] = useState(false);
+  const [showMapTypeMenu, setShowMapTypeMenu] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [activeDrawerAsset, setActiveDrawerAsset] = useState<AssetDevice | null>(null);
   const [replayFramePoint, setReplayFramePoint] = useState<RoutePoint | null>(null);
@@ -506,6 +513,40 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       });
     }
   }, [routeHistory, stoppagesList, layers.routes, layers.stops]);
+
+  // Render Mock Real-time Traffic Congestion Overlay (mode TRAFFIC only)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    trafficLayersRef.current.forEach((l) => map.removeLayer(l));
+    trafficLayersRef.current = [];
+
+    if (viewMode !== 'TRAFFIC') return;
+
+    const congestionStyle: Record<string, { color: string; weight: number }> = {
+      free: { color: '#10b981', weight: 4 },
+      moderate: { color: '#f59e0b', weight: 5 },
+      heavy: { color: '#f97316', weight: 6 },
+      stopped: { color: '#ef4444', weight: 7 },
+    };
+
+    trafficSegments.forEach((segment) => {
+      const style = congestionStyle[segment.congestionLevel] || congestionStyle.free;
+      const line = L.polyline(segment.coordinates, {
+        color: style.color,
+        weight: style.weight,
+        opacity: 0.85,
+        lineCap: 'round',
+      }).addTo(map);
+
+      line.bindTooltip(
+        `<strong>${segment.roadName}</strong><br/>Velocidade média: ${segment.avgSpeedKmh} km/h<br/>Atualizado: ${segment.updatedAt}`,
+        { permanent: false, direction: 'top' }
+      );
+      trafficLayersRef.current.push(line);
+    });
+  }, [viewMode, trafficSegments]);
 
   // Render Waze-style Navigation Route & "You are here" marker
   useEffect(() => {
@@ -833,6 +874,86 @@ export const AssetMap: React.FC<AssetMapProps> = ({
 
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
 
+            {/* Extra Map Types Dropdown: Terreno / Ruas Padrão / Noturno / Trânsito */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMapTypeMenu(!showMapTypeMenu)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1 transition-colors border ${
+                  showMapTypeMenu || ['TERRAIN', 'STREETS', 'NIGHT', 'TRAFFIC'].includes(viewMode)
+                    ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
+                    : 'bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800'
+                }`}
+                title="Mais tipos de mapa"
+              >
+                <span className="hidden sm:inline">Mais</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMapTypeMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showMapTypeMenu && (
+                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-1.5 space-y-0.5 text-xs z-30">
+                  <button
+                    onClick={() => {
+                      setViewMode('STREETS');
+                      setShowMapTypeMenu(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${
+                      viewMode === 'STREETS'
+                        ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <RouteIcon className="w-3.5 h-3.5" />
+                    <span>Ruas Padrão</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setViewMode('TERRAIN');
+                      setShowMapTypeMenu(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${
+                      viewMode === 'TERRAIN'
+                        ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <Mountain className="w-3.5 h-3.5" />
+                    <span>Terreno (Relevo)</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setViewMode('NIGHT');
+                      setShowMapTypeMenu(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${
+                      viewMode === 'NIGHT'
+                        ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                    <span>Noturno Manual</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setViewMode('TRAFFIC');
+                      setShowMapTypeMenu(false);
+                    }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${
+                      viewMode === 'TRAFFIC'
+                        ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <TrafficCone className="w-3.5 h-3.5" />
+                    <span>Trânsito em Tempo Real</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Layer Toggles Dropdown Trigger */}
             <div className="relative">
               <button
@@ -950,6 +1071,24 @@ export const AssetMap: React.FC<AssetMapProps> = ({
           <Locate className="w-4 h-4" />
           <span>Retomar Acompanhamento do Ativo</span>
         </button>
+      )}
+
+      {/* Traffic Congestion Legend (mode TRAFFIC only) */}
+      {viewMode === 'TRAFFIC' && (
+        <div className="absolute top-20 left-4 z-10 pointer-events-none bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 backdrop-blur-md px-3 py-2 rounded-2xl shadow-2xl text-[10px] font-mono text-slate-700 dark:text-slate-300 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-1.5 rounded-full bg-emerald-500" /> Fluindo
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-1.5 rounded-full bg-amber-500" /> Moderado
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-1.5 rounded-full bg-orange-500" /> Intenso
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-1.5 rounded-full bg-red-500" /> Parado
+          </div>
+        </div>
       )}
 
       {/* Leaflet DOM Canvas Container */}

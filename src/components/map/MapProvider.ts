@@ -68,14 +68,54 @@ class AthosMapProvider implements MapProviderAbstraction {
       };
     }
 
-    // HYBRID
+    if (mode === 'HYBRID') {
+      return {
+        id: 'HYBRID',
+        name: 'Satélite Híbrido com Ruas',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: '&copy; Esri &copy; OpenStreetMap',
+        overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+        overlayAttribution: '&copy; CARTO &copy; OpenStreetMap',
+        maxZoom: 19,
+      };
+    }
+
+    if (mode === 'STREETS') {
+      return {
+        id: 'STREETS',
+        name: 'Ruas Padrão (OSM Clássico)',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      };
+    }
+
+    if (mode === 'TERRAIN') {
+      return {
+        id: 'TERRAIN',
+        name: 'Terreno (Relevo)',
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; OpenStreetMap contributors, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+        maxZoom: 17,
+      };
+    }
+
+    if (mode === 'NIGHT') {
+      return {
+        id: 'NIGHT',
+        name: 'Modo Noturno Manual',
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19,
+      };
+    }
+
+    // TRAFFIC: base de ruas clara + camada de congestionamento (mock) desenhada pelo AssetMap
     return {
-      id: 'HYBRID',
-      name: 'Satélite Híbrido com Ruas',
-      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      attribution: '&copy; Esri &copy; OpenStreetMap',
-      overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
-      overlayAttribution: '&copy; CARTO &copy; OpenStreetMap',
+      id: 'TRAFFIC',
+      name: 'Trânsito em Tempo Real',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     };
   }

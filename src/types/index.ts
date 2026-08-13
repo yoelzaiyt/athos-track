@@ -1,5 +1,5 @@
 export type ThemeMode = 'light' | 'dark';
-export type MapViewMode = '2D' | 'SATELLITE' | 'HYBRID';
+export type MapViewMode = '2D' | 'SATELLITE' | 'HYBRID' | 'STREETS' | 'TERRAIN' | 'NIGHT' | 'TRAFFIC';
 export type PositionSource = 'GPS' | 'GPS Satellite' | 'LBS' | 'Wi-Fi' | 'BLE Gateway' | 'Manual';
 
 export type UserRole =
@@ -412,6 +412,19 @@ export interface RoutePoint {
   timestamp: string;
   speed: number;
   event?: string;
+}
+
+// ===================== Camada de Trânsito em Tempo Real (mock) =====================
+
+export type TrafficCongestionLevel = 'free' | 'moderate' | 'heavy' | 'stopped';
+
+export interface TrafficSegment {
+  id: string;
+  roadName: string;
+  coordinates: [number, number][];
+  congestionLevel: TrafficCongestionLevel;
+  avgSpeedKmh: number;
+  updatedAt: string;
 }
 
 export interface CartRecovery {
