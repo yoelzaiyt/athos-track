@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
-import { MOCK_USERS, MOCK_CLIENTS, MOCK_UNITS } from '../mock';
+import { MOCK_USERS } from '../mock';
+import { supabase } from '../lib/supabaseClient';
+import { rowToClient, rowToUnit } from '../lib/mappers';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -31,6 +33,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
+  const [clients, setClients] = useState<CompanyClient[]>([]);
+  const [units, setUnits] = useState<CompanyUnit[]>([]);
+
+  // Clientes/unidades reais do Supabase — alimentam os seletores (TopBar, filtros
+  // de página, dropdowns de formulário como DeviceFormModal). O login/sessão em
+  // si continua mockado (ver login/logout abaixo); só a fonte de client/unit
+  // trocou, para que criar um novo ativo/cerca/motorista referencie um client_id/
+  // unit_id que exista de verdade no banco (senão a gravação falha por FK).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [clientsRes, unitsRes] = await Promise.all([
+        supabase.from('company_clients').select('*').order('name'),
+        supabase.from('company_units').select('*').order('name'),
+      ]);
+      if (cancelled) return;
+      if (clientsRes.error) console.error('[AuthContext] Failed to load clients:', clientsRes.error.message);
+      if (unitsRes.error) console.error('[AuthContext] Failed to load units:', unitsRes.error.message);
+      setClients((clientsRes.data ?? []).map(rowToClient));
+      setUnits((unitsRes.data ?? []).map(rowToUnit));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -82,11 +109,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const availableClients = MOCK_CLIENTS;
+  const availableClients = clients;
   const availableUnits =
-    selectedClientId === 'all'
-      ? MOCK_UNITS
-      : MOCK_UNITS.filter((u) => u.clientId === selectedClientId);
+    selectedClientId === 'all' ? units : units.filter((u) => u.clientId === selectedClientId);
 
   const canAccessModule = (moduleKey: string): boolean => {
     if (!user) return false;

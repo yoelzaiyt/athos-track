@@ -1,10 +1,11 @@
 import React from 'react';
 import { Building2, Plus, CheckCircle2, Shield, Radio } from 'lucide-react';
 import { DataTable, Column } from '../../components/common/DataTable';
-import { MOCK_CLIENTS } from '../../mock';
+import { useAuth } from '../../context/AuthContext';
 import { CompanyClient } from '../../types';
 
 export const ClientsPage: React.FC = () => {
+  const { availableClients } = useAuth();
   const columns: Column<CompanyClient>[] = [
     {
       header: 'Cliente / Empresa',
@@ -84,7 +85,7 @@ export const ClientsPage: React.FC = () => {
 
       <DataTable
         title="Clientes Licenciados ATHOS TRACK"
-        data={MOCK_CLIENTS}
+        data={availableClients}
         columns={columns}
         keyExtractor={(item) => item.id}
       />

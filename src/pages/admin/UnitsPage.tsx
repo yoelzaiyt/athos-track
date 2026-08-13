@@ -1,10 +1,11 @@
 import React from 'react';
 import { MapPin, Plus, Building2 } from 'lucide-react';
 import { DataTable, Column } from '../../components/common/DataTable';
-import { MOCK_UNITS } from '../../mock';
+import { useAuth } from '../../context/AuthContext';
 import { CompanyUnit } from '../../types';
 
 export const UnitsPage: React.FC = () => {
+  const { availableUnits } = useAuth();
   const columns: Column<CompanyUnit>[] = [
     {
       header: 'Nome da Unidade',
@@ -66,7 +67,7 @@ export const UnitsPage: React.FC = () => {
 
       <DataTable
         title="Unidades de Operação Registradas"
-        data={MOCK_UNITS}
+        data={availableUnits}
         columns={columns}
         keyExtractor={(item) => item.id}
       />

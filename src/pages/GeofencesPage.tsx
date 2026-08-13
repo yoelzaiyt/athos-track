@@ -14,6 +14,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
+import { useAuth } from '../context/AuthContext';
 import { LiveMap } from '../components/map/LiveMap';
 import { GeofenceEditor } from '../components/map/GeofenceEditor';
 import { Geofence } from '../types';
@@ -23,6 +24,7 @@ const DEFAULT_CENTER: [number, number] = [-23.641414, -46.644827];
 
 export const GeofencesPage: React.FC = () => {
   const { geofences, addGeofence, updateGeofence, deleteGeofence } = useAssets();
+  const { selectedClientId, selectedUnitId, availableClients, availableUnits } = useAuth();
 
   const [editingGeofence, setEditingGeofence] = useState<Geofence | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -95,11 +97,15 @@ export const GeofencesPage: React.FC = () => {
     if (editingGeofence) {
       updateGeofence(editingGeofence.id, partial);
     } else {
+      const resolvedClientId =
+        selectedClientId !== 'all' ? selectedClientId : availableClients[0]?.id || '';
+      const resolvedUnitId =
+        selectedUnitId !== 'all' ? selectedUnitId : availableUnits[0]?.id || '';
       const created: Geofence = {
         id: `geo_custom_${Date.now()}`,
         name: partial.name || 'Nova Cerca Virtual',
-        clientId: 'cli_1',
-        unitId: 'unit_1',
+        clientId: resolvedClientId,
+        unitId: resolvedUnitId,
         type: partial.type || 'circle',
         coordinates: partial.coordinates || [DEFAULT_CENTER],
         radius: partial.radius,

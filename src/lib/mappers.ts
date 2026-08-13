@@ -21,6 +21,8 @@ import type {
   AssetPairing,
   TrafficSegment,
   PointOfInterest,
+  CompanyClient,
+  CompanyUnit,
 } from '../types';
 
 type Row = Record<string, any>;
@@ -322,3 +324,19 @@ const POI_FIELDS: FieldMap = [
 ];
 
 export const rowToPoi = (row: Row): PointOfInterest => ({ id: row.id, ...fromRow(row, POI_FIELDS) } as PointOfInterest);
+
+// ===================== Clientes & Unidades (lidos por AuthContext p/ os seletores) =====================
+
+const CLIENT_FIELDS: FieldMap = [
+  ['name', 'name'], ['code', 'code'], ['cnpj', 'cnpj'], ['unitsCount', 'units_count'],
+  ['assetsCount', 'assets_count'], ['status', 'status'], ['serviceExpireDate', 'service_expire_date'],
+];
+
+export const rowToClient = (row: Row): CompanyClient => ({ id: row.id, ...fromRow(row, CLIENT_FIELDS) } as CompanyClient);
+
+const UNIT_FIELDS: FieldMap = [
+  ['clientId', 'client_id'], ['name', 'name'], ['city', 'city'], ['state', 'state'],
+  ['address', 'address'], ['assetsCount', 'assets_count'], ['status', 'status'],
+];
+
+export const rowToUnit = (row: Row): CompanyUnit => ({ id: row.id, ...fromRow(row, UNIT_FIELDS) } as CompanyUnit);
