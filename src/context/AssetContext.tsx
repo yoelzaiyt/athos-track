@@ -20,23 +20,24 @@ import {
   TrafficSegment,
   PointOfInterest,
 } from '../types';
+import { supabase } from '../lib/supabaseClient';
 import {
-  MOCK_ASSETS,
-  MOCK_ALERTS,
-  MOCK_GEOFENCES,
-  MOCK_CARGO_SHIPMENTS,
-  MOCK_DRIVERS,
-  MOCK_MAINTENANCE,
-  MOCK_TRIPS,
-  MOCK_RECOVERIES,
-  MOCK_WORK_ORDERS,
-  MOCK_GREYLIST,
-  MOCK_RECOVERY_CASES,
-  MOCK_ROUTE_TEMPLATES,
-  MOCK_ASSET_PAIRINGS,
-  MOCK_TRAFFIC_SEGMENTS,
-  MOCK_POIS,
-} from '../mock';
+  rowToAsset, assetToInsertRow, assetUpdatesToRow,
+  rowToGeofence, geofenceToInsertRow, geofenceUpdatesToRow,
+  rowToDriver, driverToInsertRow, driverUpdatesToRow,
+  rowToMaintenance, maintenanceToInsertRow, maintenanceUpdatesToRow,
+  rowToRouteTemplate, routeTemplateToInsertRow,
+  rowToTrip, tripToInsertRow, tripUpdatesToRow,
+  rowToAlert,
+  rowToShipment, shipmentUpdatesToRow,
+  rowToRecovery, recoveryToInsertRow,
+  rowToWorkOrder, workOrderToInsertRow, workOrderUpdatesToRow,
+  rowToGreylistEntry, greylistEntryToInsertRow,
+  rowToRecoveryCase, recoveryCaseToInsertRow, recoveryCaseUpdatesToRow,
+  rowToPairing, pairingToInsertRow, pairingUpdatesToRow,
+  rowToTrafficSegment,
+  rowToPoi,
+} from '../lib/mappers';
 
 interface AssetContextType {
   assets: AssetDevice[];
@@ -54,6 +55,7 @@ interface AssetContextType {
   assetPairings: AssetPairing[];
   trafficSegments: TrafficSegment[];
   pois: PointOfInterest[];
+  isLoading: boolean;
   selectedAsset: AssetDevice | null;
   searchQuery: string;
   categoryFilter: AssetCategory | 'all';
@@ -116,22 +118,27 @@ interface AssetContextType {
 
 const AssetContext = createContext<AssetContextType | undefined>(undefined);
 
+function logError(label: string, error: { message: string } | null) {
+  if (error) console.error(`[AssetContext] ${label}:`, error.message);
+}
+
 export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [assets, setAssets] = useState<AssetDevice[]>(MOCK_ASSETS);
-  const [alerts, setAlerts] = useState<SystemAlert[]>(MOCK_ALERTS);
-  const [geofences, setGeofences] = useState<Geofence[]>(MOCK_GEOFENCES);
-  const [shipments, setShipments] = useState<CargoShipment[]>(MOCK_CARGO_SHIPMENTS);
-  const [drivers, setDrivers] = useState<Driver[]>(MOCK_DRIVERS);
-  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(MOCK_MAINTENANCE);
-  const [trips, setTrips] = useState<TripRecord[]>(MOCK_TRIPS);
-  const [recoveries, setRecoveries] = useState<CartRecovery[]>(MOCK_RECOVERIES);
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>(MOCK_WORK_ORDERS);
-  const [greylist, setGreylist] = useState<GreylistEntry[]>(MOCK_GREYLIST);
-  const [recoveryCases, setRecoveryCases] = useState<AssetRecoveryCase[]>(MOCK_RECOVERY_CASES);
-  const [routeTemplates, setRouteTemplates] = useState<RouteTemplate[]>(MOCK_ROUTE_TEMPLATES);
-  const [assetPairings, setAssetPairings] = useState<AssetPairing[]>(MOCK_ASSET_PAIRINGS);
-  const [trafficSegments] = useState<TrafficSegment[]>(MOCK_TRAFFIC_SEGMENTS);
-  const [pois] = useState<PointOfInterest[]>(MOCK_POIS);
+  const [assets, setAssets] = useState<AssetDevice[]>([]);
+  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [geofences, setGeofences] = useState<Geofence[]>([]);
+  const [shipments, setShipments] = useState<CargoShipment[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
+  const [trips, setTrips] = useState<TripRecord[]>([]);
+  const [recoveries, setRecoveries] = useState<CartRecovery[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [greylist, setGreylist] = useState<GreylistEntry[]>([]);
+  const [recoveryCases, setRecoveryCases] = useState<AssetRecoveryCase[]>([]);
+  const [routeTemplates, setRouteTemplates] = useState<RouteTemplate[]>([]);
+  const [assetPairings, setAssetPairings] = useState<AssetPairing[]>([]);
+  const [trafficSegments, setTrafficSegments] = useState<TrafficSegment[]>([]);
+  const [pois, setPois] = useState<PointOfInterest[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
@@ -139,7 +146,77 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [activeTabModule, setActiveTabModule] = useState<string>('dashboard');
   const [isLiveSimulationActive, setIsLiveSimulationActive] = useState<boolean>(true);
 
-  // Live simulation tick every 4 seconds to show live telemetry updates
+  // Carga inicial: busca todas as coleções do Supabase em paralelo.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const [
+        assetsRes, alertsRes, geofencesRes, shipmentsRes, driversRes, maintenanceRes,
+        tripsRes, recoveriesRes, workOrdersRes, greylistRes, recoveryCasesRes,
+        routeTemplatesRes, pairingsRes, trafficRes, poisRes,
+      ] = await Promise.all([
+        supabase.from('assets').select('*').order('created_at', { ascending: false }),
+        supabase.from('system_alerts').select('*').order('created_at', { ascending: false }),
+        supabase.from('geofences').select('*').order('created_at', { ascending: false }),
+        supabase.from('cargo_shipments').select('*').order('created_at', { ascending: false }),
+        supabase.from('drivers').select('*').order('created_at', { ascending: false }),
+        supabase.from('maintenance_records').select('*').order('created_at', { ascending: false }),
+        supabase.from('trip_records').select('*').order('created_at', { ascending: false }),
+        supabase.from('cart_recoveries').select('*').order('timestamp', { ascending: false }),
+        supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
+        supabase.from('greylist_entries').select('*').order('added_at', { ascending: false }),
+        supabase.from('asset_recovery_cases').select('*').order('opened_at', { ascending: false }),
+        supabase.from('route_templates').select('*').order('created_at', { ascending: false }),
+        supabase.from('asset_pairings').select('*'),
+        supabase.from('traffic_segments').select('*'),
+        supabase.from('points_of_interest').select('*'),
+      ]);
+
+      if (cancelled) return;
+
+      logError('assets', assetsRes.error);
+      logError('alerts', alertsRes.error);
+      logError('geofences', geofencesRes.error);
+      logError('shipments', shipmentsRes.error);
+      logError('drivers', driversRes.error);
+      logError('maintenanceRecords', maintenanceRes.error);
+      logError('trips', tripsRes.error);
+      logError('recoveries', recoveriesRes.error);
+      logError('workOrders', workOrdersRes.error);
+      logError('greylist', greylistRes.error);
+      logError('recoveryCases', recoveryCasesRes.error);
+      logError('routeTemplates', routeTemplatesRes.error);
+      logError('assetPairings', pairingsRes.error);
+      logError('trafficSegments', trafficRes.error);
+      logError('pois', poisRes.error);
+
+      setAssets((assetsRes.data ?? []).map(rowToAsset));
+      setAlerts((alertsRes.data ?? []).map(rowToAlert));
+      setGeofences((geofencesRes.data ?? []).map(rowToGeofence));
+      setShipments((shipmentsRes.data ?? []).map(rowToShipment));
+      setDrivers((driversRes.data ?? []).map(rowToDriver));
+      setMaintenanceRecords((maintenanceRes.data ?? []).map(rowToMaintenance));
+      setTrips((tripsRes.data ?? []).map(rowToTrip));
+      setRecoveries((recoveriesRes.data ?? []).map(rowToRecovery));
+      setWorkOrders((workOrdersRes.data ?? []).map(rowToWorkOrder));
+      setGreylist((greylistRes.data ?? []).map(rowToGreylistEntry));
+      setRecoveryCases((recoveryCasesRes.data ?? []).map(rowToRecoveryCase));
+      setRouteTemplates((routeTemplatesRes.data ?? []).map(rowToRouteTemplate));
+      setAssetPairings((pairingsRes.data ?? []).map(rowToPairing));
+      setTrafficSegments((trafficRes.data ?? []).map(rowToTrafficSegment));
+      setPois((poisRes.data ?? []).map(rowToPoi));
+      setIsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Simulação de movimento a cada 4s: só client-side, sobre o estado já carregado
+  // do Supabase — não grava de volta no banco (evita milhares de writes por uma
+  // demo visual; um rastreador real enviaria telemetria real via um pipeline próprio).
   useEffect(() => {
     if (!isLiveSimulationActive) return;
 
@@ -228,59 +305,92 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsLiveSimulationActive((prev) => !prev);
   };
 
-  const acknowledgeAlert = (alertId: string) => {
-    setAlerts((prev) =>
-      prev.map((alt) => (alt.id === alertId ? { ...alt, acknowledged: true } : alt))
-    );
+  const acknowledgeAlert = async (alertId: string) => {
+    const { error } = await supabase.from('system_alerts').update({ acknowledged: true }).eq('id', alertId);
+    logError('acknowledgeAlert', error);
+    if (error) return;
+    setAlerts((prev) => prev.map((alt) => (alt.id === alertId ? { ...alt, acknowledged: true } : alt)));
   };
 
-  const addGeofence = (geofence: Geofence) => {
-    setGeofences((prev) => [geofence, ...prev]);
+  const addGeofence = async (geofence: Geofence) => {
+    const { data, error } = await supabase
+      .from('geofences')
+      .insert(geofenceToInsertRow(geofence))
+      .select()
+      .single();
+    logError('addGeofence', error);
+    if (error || !data) return;
+    setGeofences((prev) => [rowToGeofence(data), ...prev]);
   };
 
-  const updateGeofence = (geofenceId: string, updates: Partial<Geofence>) => {
+  const updateGeofence = async (geofenceId: string, updates: Partial<Geofence>) => {
+    const { error } = await supabase.from('geofences').update(geofenceUpdatesToRow(updates)).eq('id', geofenceId);
+    logError('updateGeofence', error);
+    if (error) return;
     setGeofences((prev) => prev.map((g) => (g.id === geofenceId ? { ...g, ...updates } : g)));
   };
 
-  const deleteGeofence = (geofenceId: string) => {
+  const deleteGeofence = async (geofenceId: string) => {
+    const { error } = await supabase.from('geofences').delete().eq('id', geofenceId);
+    logError('deleteGeofence', error);
+    if (error) return;
     setGeofences((prev) => prev.filter((g) => g.id !== geofenceId));
   };
 
-  const addAsset = (asset: AssetDevice) => {
-    setAssets((prev) => [asset, ...prev]);
+  const addAsset = async (asset: AssetDevice) => {
+    const { data, error } = await supabase.from('assets').insert(assetToInsertRow(asset)).select().single();
+    logError('addAsset', error);
+    if (error || !data) return;
+    setAssets((prev) => [rowToAsset(data), ...prev]);
   };
 
-  const updateAsset = (assetId: string, updates: Partial<AssetDevice>) => {
+  const updateAsset = async (assetId: string, updates: Partial<AssetDevice>) => {
+    const { error } = await supabase.from('assets').update(assetUpdatesToRow(updates)).eq('id', assetId);
+    logError('updateAsset', error);
+    if (error) return;
     setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, ...updates } : a)));
   };
 
-  const deleteAsset = (assetId: string) => {
+  const deleteAsset = async (assetId: string) => {
+    const { error } = await supabase.from('assets').delete().eq('id', assetId);
+    logError('deleteAsset', error);
+    if (error) return;
     setAssets((prev) => prev.filter((a) => a.id !== assetId));
     if (selectedAsset?.id === assetId) setSelectedAsset(null);
   };
 
-  const toggleVehicleBlock = (assetId: string) => {
-    setAssets((prev) =>
-      prev.map((a) => {
-        if (a.id !== assetId) return a;
-        const nextBlocked = !a.isBlocked;
-        return {
-          ...a,
-          isBlocked: nextBlocked,
-          telemetry: { ...a.telemetry, ignition: nextBlocked ? false : a.telemetry.ignition },
-          status: nextBlocked ? 'maintenance' : a.status,
-        };
-      })
-    );
+  const toggleVehicleBlock = async (assetId: string) => {
+    const current = assets.find((a) => a.id === assetId);
+    if (!current) return;
+    const nextBlocked = !current.isBlocked;
+    const patch: Partial<AssetDevice> = {
+      isBlocked: nextBlocked,
+      telemetry: { ...current.telemetry, ignition: nextBlocked ? false : current.telemetry.ignition },
+      status: nextBlocked ? 'maintenance' : current.status,
+    };
+    const { error } = await supabase.from('assets').update(assetUpdatesToRow(patch)).eq('id', assetId);
+    logError('toggleVehicleBlock', error);
+    if (error) return;
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, ...patch } : a)));
   };
 
-  const toggleDoorLock = (assetId: string) => {
-    setAssets((prev) =>
-      prev.map((a) => (a.id === assetId ? { ...a, isDoorLocked: !a.isDoorLocked } : a))
-    );
+  const toggleDoorLock = async (assetId: string) => {
+    const current = assets.find((a) => a.id === assetId);
+    if (!current) return;
+    const nextLocked = !current.isDoorLocked;
+    const { error } = await supabase.from('assets').update({ is_door_locked: nextLocked }).eq('id', assetId);
+    logError('toggleDoorLock', error);
+    if (error) return;
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, isDoorLocked: nextLocked } : a)));
   };
 
-  const registerSealEvent = (shipmentId: string, status: SealStatus, trigger: SealTriggerMethod) => {
+  const registerSealEvent = async (shipmentId: string, status: SealStatus, trigger: SealTriggerMethod) => {
+    const { error } = await supabase
+      .from('cargo_shipments')
+      .update({ seal_status: status, seal_last_trigger: trigger, seal_last_event_time: 'Agora' })
+      .eq('id', shipmentId);
+    logError('registerSealEvent', error);
+    if (error) return;
     setShipments((prev) =>
       prev.map((s) =>
         s.id === shipmentId
@@ -290,149 +400,266 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  const addDriver = (driver: Driver) => {
-    setDrivers((prev) => [driver, ...prev]);
+  const addDriver = async (driver: Driver) => {
+    const { data, error } = await supabase.from('drivers').insert(driverToInsertRow(driver)).select().single();
+    logError('addDriver', error);
+    if (error || !data) return;
+    setDrivers((prev) => [rowToDriver(data), ...prev]);
   };
 
-  const updateDriver = (driverId: string, updates: Partial<Driver>) => {
+  const updateDriver = async (driverId: string, updates: Partial<Driver>) => {
+    const { error } = await supabase.from('drivers').update(driverUpdatesToRow(updates)).eq('id', driverId);
+    logError('updateDriver', error);
+    if (error) return;
     setDrivers((prev) => prev.map((d) => (d.id === driverId ? { ...d, ...updates } : d)));
   };
 
-  const deleteDriver = (driverId: string) => {
+  const deleteDriver = async (driverId: string) => {
+    const { error } = await supabase.from('drivers').delete().eq('id', driverId);
+    logError('deleteDriver', error);
+    if (error) return;
     setDrivers((prev) => prev.filter((d) => d.id !== driverId));
   };
 
-  const addMaintenanceRecord = (record: MaintenanceRecord) => {
-    setMaintenanceRecords((prev) => [record, ...prev]);
+  const addMaintenanceRecord = async (record: MaintenanceRecord) => {
+    const { data, error } = await supabase
+      .from('maintenance_records')
+      .insert(maintenanceToInsertRow(record))
+      .select()
+      .single();
+    logError('addMaintenanceRecord', error);
+    if (error || !data) return;
+    setMaintenanceRecords((prev) => [rowToMaintenance(data), ...prev]);
   };
 
-  const updateMaintenanceRecord = (recordId: string, updates: Partial<MaintenanceRecord>) => {
+  const updateMaintenanceRecord = async (recordId: string, updates: Partial<MaintenanceRecord>) => {
+    const { error } = await supabase
+      .from('maintenance_records')
+      .update(maintenanceUpdatesToRow(updates))
+      .eq('id', recordId);
+    logError('updateMaintenanceRecord', error);
+    if (error) return;
     setMaintenanceRecords((prev) => prev.map((m) => (m.id === recordId ? { ...m, ...updates } : m)));
   };
 
-  const deleteMaintenanceRecord = (recordId: string) => {
+  const deleteMaintenanceRecord = async (recordId: string) => {
+    const { error } = await supabase.from('maintenance_records').delete().eq('id', recordId);
+    logError('deleteMaintenanceRecord', error);
+    if (error) return;
     setMaintenanceRecords((prev) => prev.filter((m) => m.id !== recordId));
   };
 
-  const addTrip = (trip: TripRecord) => {
-    setTrips((prev) => [trip, ...prev]);
+  const addTrip = async (trip: TripRecord) => {
+    const { data, error } = await supabase.from('trip_records').insert(tripToInsertRow(trip)).select().single();
+    logError('addTrip', error);
+    if (error || !data) return;
+    setTrips((prev) => [rowToTrip(data), ...prev]);
   };
 
-  const updateTrip = (tripId: string, updates: Partial<TripRecord>) => {
+  const updateTrip = async (tripId: string, updates: Partial<TripRecord>) => {
+    const { error } = await supabase.from('trip_records').update(tripUpdatesToRow(updates)).eq('id', tripId);
+    logError('updateTrip', error);
+    if (error) return;
     setTrips((prev) => prev.map((t) => (t.id === tripId ? { ...t, ...updates } : t)));
   };
 
-  const deleteTrip = (tripId: string) => {
+  const deleteTrip = async (tripId: string) => {
+    const { error } = await supabase.from('trip_records').delete().eq('id', tripId);
+    logError('deleteTrip', error);
+    if (error) return;
     setTrips((prev) => prev.filter((t) => t.id !== tripId));
   };
 
-  const recoverAsset = (
+  const recoverAsset = async (
     assetId: string,
     recovery: Omit<CartRecovery, 'id' | 'assetId' | 'assetName' | 'assetCode' | 'unitName' | 'timestamp'>
   ) => {
     const asset = assets.find((a) => a.id === assetId);
     if (!asset) return;
 
-    const record: CartRecovery = {
+    const recoveryRow: Omit<CartRecovery, 'id'> = {
       ...recovery,
-      id: `rec_${Date.now()}`,
       assetId: asset.id,
       assetName: asset.name,
       assetCode: asset.code,
       unitName: asset.unitName,
       timestamp: 'Agora',
     };
-    setRecoveries((prev) => [record, ...prev]);
 
-    // Ativo volta ao estado normal dentro do perímetro
-    setAssets((prev) =>
-      prev.map((a) => (a.id === assetId ? { ...a, status: 'available', geofenceName: undefined } : a))
-    );
+    const { data, error } = await supabase
+      .from('cart_recoveries')
+      .insert(recoveryToInsertRow(recoveryRow))
+      .select()
+      .single();
+    logError('recoverAsset (insert)', error);
+    if (error || !data) return;
+    setRecoveries((prev) => [rowToRecovery(data), ...prev]);
 
-    // Fecha automaticamente qualquer alerta em aberto vinculado a este ativo
-    setAlerts((prev) =>
-      prev.map((alt) => (alt.assetId === assetId && !alt.acknowledged ? { ...alt, acknowledged: true } : alt))
-    );
+    const { error: assetErr } = await supabase
+      .from('assets')
+      .update({ status: 'available', geofence_name: null })
+      .eq('id', assetId);
+    logError('recoverAsset (asset status)', assetErr);
+    if (!assetErr) {
+      setAssets((prev) =>
+        prev.map((a) => (a.id === assetId ? { ...a, status: 'available', geofenceName: undefined } : a))
+      );
+    }
+
+    const { error: alertErr } = await supabase
+      .from('system_alerts')
+      .update({ acknowledged: true })
+      .eq('asset_id', assetId)
+      .eq('acknowledged', false);
+    logError('recoverAsset (close alerts)', alertErr);
+    if (!alertErr) {
+      setAlerts((prev) =>
+        prev.map((alt) => (alt.assetId === assetId && !alt.acknowledged ? { ...alt, acknowledged: true } : alt))
+      );
+    }
   };
 
-  const addWorkOrder = (order: WorkOrder) => {
-    setWorkOrders((prev) => [order, ...prev]);
+  const addWorkOrder = async (order: WorkOrder) => {
+    const { data, error } = await supabase.from('work_orders').insert(workOrderToInsertRow(order)).select().single();
+    logError('addWorkOrder', error);
+    if (error || !data) return;
+    setWorkOrders((prev) => [rowToWorkOrder(data), ...prev]);
   };
 
-  const updateWorkOrder = (orderId: string, updates: Partial<WorkOrder>) => {
+  const updateWorkOrder = async (orderId: string, updates: Partial<WorkOrder>) => {
+    const { error } = await supabase.from('work_orders').update(workOrderUpdatesToRow(updates)).eq('id', orderId);
+    logError('updateWorkOrder', error);
+    if (error) return;
     setWorkOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)));
   };
 
-  const deleteWorkOrder = (orderId: string) => {
+  const deleteWorkOrder = async (orderId: string) => {
+    const { error } = await supabase.from('work_orders').delete().eq('id', orderId);
+    logError('deleteWorkOrder', error);
+    if (error) return;
     setWorkOrders((prev) => prev.filter((o) => o.id !== orderId));
   };
 
-  const addGreylistEntry = (entry: GreylistEntry) => {
-    setGreylist((prev) => [entry, ...prev]);
+  const addGreylistEntry = async (entry: GreylistEntry) => {
+    const { data, error } = await supabase
+      .from('greylist_entries')
+      .insert(greylistEntryToInsertRow(entry))
+      .select()
+      .single();
+    logError('addGreylistEntry', error);
+    if (error || !data) return;
+    setGreylist((prev) => [rowToGreylistEntry(data), ...prev]);
   };
 
-  const deleteGreylistEntry = (entryId: string) => {
+  const deleteGreylistEntry = async (entryId: string) => {
+    const { error } = await supabase.from('greylist_entries').delete().eq('id', entryId);
+    logError('deleteGreylistEntry', error);
+    if (error) return;
     setGreylist((prev) => prev.filter((g) => g.id !== entryId));
   };
 
-  const addRecoveryCase = (recoveryCase: AssetRecoveryCase) => {
-    setRecoveryCases((prev) => [recoveryCase, ...prev]);
+  const addRecoveryCase = async (recoveryCase: AssetRecoveryCase) => {
+    const { data, error } = await supabase
+      .from('asset_recovery_cases')
+      .insert(recoveryCaseToInsertRow(recoveryCase))
+      .select()
+      .single();
+    logError('addRecoveryCase', error);
+    if (error || !data) return;
+    setRecoveryCases((prev) => [rowToRecoveryCase(data), ...prev]);
   };
 
-  const updateRecoveryCase = (caseId: string, updates: Partial<AssetRecoveryCase>) => {
+  const updateRecoveryCase = async (caseId: string, updates: Partial<AssetRecoveryCase>) => {
+    const { error } = await supabase
+      .from('asset_recovery_cases')
+      .update(recoveryCaseUpdatesToRow(updates))
+      .eq('id', caseId);
+    logError('updateRecoveryCase', error);
+    if (error) return;
     setRecoveryCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, ...updates } : c)));
   };
 
-  const addRouteTemplate = (template: RouteTemplate) => {
-    setRouteTemplates((prev) => [template, ...prev]);
+  const addRouteTemplate = async (template: RouteTemplate) => {
+    const { data, error } = await supabase
+      .from('route_templates')
+      .insert(routeTemplateToInsertRow(template))
+      .select()
+      .single();
+    logError('addRouteTemplate', error);
+    if (error || !data) return;
+    setRouteTemplates((prev) => [rowToRouteTemplate(data), ...prev]);
   };
 
-  const deleteRouteTemplate = (templateId: string) => {
+  const deleteRouteTemplate = async (templateId: string) => {
+    const { error } = await supabase.from('route_templates').delete().eq('id', templateId);
+    logError('deleteRouteTemplate', error);
+    if (error) return;
     setRouteTemplates((prev) => prev.filter((t) => t.id !== templateId));
   };
 
-  const addAssetPairing = (pairing: AssetPairing) => {
-    setAssetPairings((prev) => [pairing, ...prev]);
+  const addAssetPairing = async (pairing: AssetPairing) => {
+    const { data, error } = await supabase
+      .from('asset_pairings')
+      .insert(pairingToInsertRow(pairing))
+      .select()
+      .single();
+    logError('addAssetPairing', error);
+    if (error || !data) return;
+    setAssetPairings((prev) => [rowToPairing(data), ...prev]);
   };
 
-  const updateAssetPairing = (pairingId: string, updates: Partial<AssetPairing>) => {
+  const updateAssetPairing = async (pairingId: string, updates: Partial<AssetPairing>) => {
+    const { error } = await supabase
+      .from('asset_pairings')
+      .update(pairingUpdatesToRow(updates))
+      .eq('id', pairingId);
+    logError('updateAssetPairing', error);
+    if (error) return;
     setAssetPairings((prev) => prev.map((p) => (p.id === pairingId ? { ...p, ...updates } : p)));
   };
 
-  const deleteAssetPairing = (pairingId: string) => {
+  const deleteAssetPairing = async (pairingId: string) => {
+    const { error } = await supabase.from('asset_pairings').delete().eq('id', pairingId);
+    logError('deleteAssetPairing', error);
+    if (error) return;
     setAssetPairings((prev) => prev.filter((p) => p.id !== pairingId));
   };
 
-  const sendRemoteCommand = (assetId: string, command: string, label: string) => {
-    setAssets((prev) =>
-      prev.map((a) => (a.id === assetId ? { ...a, lastRemoteCommand: { command, label, sentAt: 'Agora' } } : a))
-    );
+  const sendRemoteCommand = async (assetId: string, command: string, label: string) => {
+    const lastRemoteCommand = { command, label, sentAt: 'Agora' };
+    const { error } = await supabase.from('assets').update({ last_remote_command: lastRemoteCommand }).eq('id', assetId);
+    logError('sendRemoteCommand', error);
+    if (error) return;
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, lastRemoteCommand } : a)));
   };
 
-  const calibrateOdometer = (assetId: string, newOdometer: number) => {
+  const calibrateOdometer = async (assetId: string, newOdometer: number) => {
+    const lastRemoteCommand = { command: '6B', label: 'Calibração de Odômetro', sentAt: 'Agora' };
+    const { error } = await supabase
+      .from('assets')
+      .update({ telemetry_odometer: newOdometer, last_remote_command: lastRemoteCommand })
+      .eq('id', assetId);
+    logError('calibrateOdometer', error);
+    if (error) return;
     setAssets((prev) =>
       prev.map((a) =>
-        a.id === assetId
-          ? {
-              ...a,
-              telemetry: { ...a.telemetry, odometer: newOdometer },
-              lastRemoteCommand: { command: '6B', label: 'Calibração de Odômetro', sentAt: 'Agora' },
-            }
-          : a
+        a.id === assetId ? { ...a, telemetry: { ...a.telemetry, odometer: newOdometer }, lastRemoteCommand } : a
       )
     );
   };
 
-  const pushOfflineWhitelist = (assetId: string) => {
+  const pushOfflineWhitelist = async (assetId: string) => {
+    const syncedAt = new Date().toISOString();
+    const lastRemoteCommand = { command: '94Down', label: 'Sincronização de Whitelist Offline', sentAt: 'Agora' };
+    const { error } = await supabase
+      .from('assets')
+      .update({ offline_whitelist_synced_at: syncedAt, last_remote_command: lastRemoteCommand })
+      .eq('id', assetId);
+    logError('pushOfflineWhitelist', error);
+    if (error) return;
     setAssets((prev) =>
       prev.map((a) =>
-        a.id === assetId
-          ? {
-              ...a,
-              offlineWhitelistSyncedAt: 'Agora',
-              lastRemoteCommand: { command: '94Down', label: 'Sincronização de Whitelist Offline', sentAt: 'Agora' },
-            }
-          : a
+        a.id === assetId ? { ...a, offlineWhitelistSyncedAt: syncedAt, lastRemoteCommand } : a
       )
     );
   };
@@ -502,6 +729,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         assetPairings,
         trafficSegments,
         pois,
+        isLoading,
         selectedAsset,
         searchQuery,
         categoryFilter,
