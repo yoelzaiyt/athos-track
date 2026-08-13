@@ -427,6 +427,19 @@ export interface TrafficSegment {
   updatedAt: string;
 }
 
+// ===================== Pontos de Interesse (mock) =====================
+
+export type POICategory = 'fuel_station' | 'workshop' | 'yard' | 'parking';
+
+export interface PointOfInterest {
+  id: string;
+  name: string;
+  category: POICategory;
+  latitude: number;
+  longitude: number;
+  address?: string;
+}
+
 export interface CartRecovery {
   id: string;
   assetId: string;

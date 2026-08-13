@@ -18,6 +18,7 @@ import {
   RouteTemplate,
   AssetPairing,
   TrafficSegment,
+  PointOfInterest,
 } from '../types';
 
 export const MOCK_CLIENTS: CompanyClient[] = [
@@ -1636,5 +1637,64 @@ export const MOCK_TRAFFIC_SEGMENTS: TrafficSegment[] = [
     congestionLevel: 'heavy',
     avgSpeedKmh: 9,
     updatedAt: 'Agora',
+  },
+];
+
+export const MOCK_POIS: PointOfInterest[] = [
+  {
+    id: 'poi_01',
+    name: 'Posto Ipiranga - Marginal',
+    category: 'fuel_station',
+    latitude: -23.6120,
+    longitude: -46.6950,
+    address: 'Av. Marginal Pinheiros, 1200',
+  },
+  {
+    id: 'poi_02',
+    name: 'Posto Shell - Interlagos',
+    category: 'fuel_station',
+    latitude: -23.6650,
+    longitude: -46.6700,
+    address: 'Av. Interlagos, 3400',
+  },
+  {
+    id: 'poi_03',
+    name: 'Oficina Mecânica Central',
+    category: 'workshop',
+    latitude: -23.6280,
+    longitude: -46.6390,
+    address: 'Rua Vergueiro, 890',
+  },
+  {
+    id: 'poi_04',
+    name: 'Oficina Diesel Truck Service',
+    category: 'workshop',
+    latitude: -23.5480,
+    longitude: -46.6250,
+    address: 'Av. Salim Farah Maluf, 2200',
+  },
+  {
+    id: 'poi_05',
+    name: 'Pátio Central de Frota',
+    category: 'yard',
+    latitude: -23.6414,
+    longitude: -46.6448,
+    address: 'Sede - Pátio Operacional',
+  },
+  {
+    id: 'poi_06',
+    name: 'Pátio Zona Sul',
+    category: 'yard',
+    latitude: -23.6800,
+    longitude: -46.6900,
+    address: 'Estrada do M\'Boi Mirim, 4500',
+  },
+  {
+    id: 'poi_07',
+    name: 'Estacionamento Coberto Faria Lima',
+    category: 'parking',
+    latitude: -23.5850,
+    longitude: -46.6820,
+    address: 'Av. Brig. Faria Lima, 3500',
   },
 ];

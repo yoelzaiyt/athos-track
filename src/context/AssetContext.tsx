@@ -18,6 +18,7 @@ import {
   RouteTemplate,
   AssetPairing,
   TrafficSegment,
+  PointOfInterest,
 } from '../types';
 import {
   MOCK_ASSETS,
@@ -34,6 +35,7 @@ import {
   MOCK_ROUTE_TEMPLATES,
   MOCK_ASSET_PAIRINGS,
   MOCK_TRAFFIC_SEGMENTS,
+  MOCK_POIS,
 } from '../mock';
 
 interface AssetContextType {
@@ -51,6 +53,7 @@ interface AssetContextType {
   routeTemplates: RouteTemplate[];
   assetPairings: AssetPairing[];
   trafficSegments: TrafficSegment[];
+  pois: PointOfInterest[];
   selectedAsset: AssetDevice | null;
   searchQuery: string;
   categoryFilter: AssetCategory | 'all';
@@ -128,6 +131,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [routeTemplates, setRouteTemplates] = useState<RouteTemplate[]>(MOCK_ROUTE_TEMPLATES);
   const [assetPairings, setAssetPairings] = useState<AssetPairing[]>(MOCK_ASSET_PAIRINGS);
   const [trafficSegments] = useState<TrafficSegment[]>(MOCK_TRAFFIC_SEGMENTS);
+  const [pois] = useState<PointOfInterest[]>(MOCK_POIS);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
@@ -497,6 +501,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         routeTemplates,
         assetPairings,
         trafficSegments,
+        pois,
         selectedAsset,
         searchQuery,
         categoryFilter,

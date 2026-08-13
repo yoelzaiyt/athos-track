@@ -41,6 +41,12 @@ import {
   Moon,
   Route as RouteIcon,
   TrafficCone,
+  Fuel,
+  Wrench,
+  Warehouse,
+  ParkingCircle,
+  Ruler,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AssetDevice,
@@ -69,10 +75,30 @@ import {
   buildWazeUrl,
   buildGoogleMapsUrl,
   suggestProfileForCategory,
+  formatDistance,
   NavigationProfile,
   RouteResult,
   LatLng,
 } from './RoutingService';
+
+function haversineMeters(a: [number, number], b: [number, number]): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function totalPathDistanceMeters(points: [number, number][]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += haversineMeters(points[i - 1], points[i]);
+  }
+  return total;
+}
 
 export interface AssetMapProps {
   assetsList?: AssetDevice[];
@@ -145,7 +171,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   onOpenAlerts,
   onOpenReports,
 }) => {
-  const { assets, geofences, trafficSegments, selectedAsset, setSelectedAsset } = useAssets();
+  const { assets, geofences, trafficSegments, alerts, pois, selectedAsset, setSelectedAsset } = useAssets();
   const { theme } = useAuth();
 
   // Tema dos tiles do mapa: automático pelo horário de Brasília, independente do
@@ -174,6 +200,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   const pickedPointMarkerRef = useRef<L.Marker | null>(null);
   const polygonDraftLayerRef = useRef<L.Layer[]>([]);
   const trafficLayersRef = useRef<L.Layer[]>([]);
+  const alertLayersRef = useRef<L.Layer[]>([]);
+  const poiLayersRef = useRef<L.Layer[]>([]);
+  const heatmapLayersRef = useRef<L.Layer[]>([]);
+  const measureLayersRef = useRef<L.Layer[]>([]);
+  const geocodeMarkerRef = useRef<L.Marker | null>(null);
 
   const savedPrefs = mapProvider.loadPreferences();
 
@@ -185,6 +216,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFollowing, setIsFollowing] = useState(enableFollowMode);
+  const [mapZoom, setMapZoom] = useState<number>(savedPrefs.zoom || 13);
 
   // Active Map Layers Toggles
   const [layers, setLayers] = useState<Record<string, boolean>>({
@@ -195,6 +227,8 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     clusters: savedPrefs.layers.clusters ?? showClustering,
     gpsAccuracy: savedPrefs.layers.gpsAccuracy ?? true,
     heatmap: savedPrefs.layers.heatmap ?? false,
+    pois: savedPrefs.layers.pois ?? false,
+    speedSegments: savedPrefs.layers.speedSegments ?? false,
   });
 
   const [showLayerMenu, setShowLayerMenu] = useState(false);
@@ -202,6 +236,14 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   const [showLegend, setShowLegend] = useState(false);
   const [activeDrawerAsset, setActiveDrawerAsset] = useState<AssetDevice | null>(null);
   const [replayFramePoint, setReplayFramePoint] = useState<RoutePoint | null>(null);
+
+  // Ferramenta de medição de distância (régua): clique para adicionar pontos, Esc/botão para finalizar
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
+
+  // Busca por endereço (geocoding via Nominatim) quando não há ativo correspondente
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
 
   // Navegação estilo Waze até um ativo (recolher carrinho, localizar equipamento, veículo, etc.)
   const [navigationTarget, setNavigationTarget] = useState<AssetDevice | null>(null);
@@ -285,6 +327,48 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     return true;
   });
 
+  // Busca por endereço (geocoding via Nominatim/OSM, mesma família do OSRM usado em RoutingService):
+  // acionada ao pressionar Enter quando a busca não encontrou nenhum ativo correspondente.
+  const handleGeocodeSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query || displayAssets.length > 0 || !mapInstanceRef.current) return;
+
+    setIsGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
+      );
+      if (!response.ok) throw new Error('Falha ao consultar o serviço de endereços.');
+      const results = await response.json();
+      if (!results.length) {
+        setGeocodeError('Nenhum endereço encontrado.');
+        return;
+      }
+
+      const { lat, lon, display_name } = results[0];
+      const map = mapInstanceRef.current;
+      map.flyTo([parseFloat(lat), parseFloat(lon)], 16, { duration: 1.0 });
+
+      if (geocodeMarkerRef.current) {
+        map.removeLayer(geocodeMarkerRef.current);
+      }
+      const icon = L.divIcon({
+        className: 'athos-geocode-marker-icon',
+        html: `<div style="width:20px;height:20px;border-radius:50% 50% 50% 0;background:#a855f7;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);transform:rotate(-45deg);"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 20],
+      });
+      const marker = L.marker([parseFloat(lat), parseFloat(lon)], { icon }).addTo(map);
+      marker.bindTooltip(display_name, { direction: 'top' }).openTooltip();
+      geocodeMarkerRef.current = marker;
+    } catch (err: any) {
+      setGeocodeError(err?.message || 'Não foi possível buscar esse endereço.');
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
   // Initialize Map Instance
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -305,6 +389,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
 
       map.on('zoomend', () => {
         mapProvider.savePreferences({ zoom: map.getZoom() });
+        setMapZoom(map.getZoom());
       });
 
       mapInstanceRef.current = map;
@@ -387,6 +472,35 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       map.getContainer().style.cursor = '';
     };
   }, [pickPointMode, polygonDraftMode, onPointPicked, onPolygonPointAdded]);
+
+  // Captura de clique no mapa para a ferramenta de medição de distância (régua)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    map.getContainer().style.cursor = measureMode ? 'crosshair' : map.getContainer().style.cursor;
+    if (!measureMode) return;
+
+    const handleMeasureClick = (e: L.LeafletMouseEvent) => {
+      setMeasurePoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]]);
+    };
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMeasureMode(false);
+        setMeasurePoints([]);
+      }
+    };
+
+    map.on('click', handleMeasureClick);
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => {
+      map.off('click', handleMeasureClick);
+      window.removeEventListener('keydown', handleEscapeKey);
+      if (map.getContainer().style.cursor === 'crosshair') {
+        map.getContainer().style.cursor = '';
+      }
+    };
+  }, [measureMode]);
 
   // Marcador do ponto capturado (centro da cerca) e prévia do polígono em desenho
   useEffect(() => {
@@ -482,17 +596,44 @@ export const AssetMap: React.FC<AssetMapProps> = ({
 
     if (layers.routes && routeHistory && routeHistory.length > 1) {
       const points: [number, number][] = routeHistory.map((p) => [p.latitude, p.longitude]);
-      const polyline = L.polyline(points, {
-        color: '#06b6d4',
-        weight: 4,
-        opacity: 0.85,
-        smoothFactor: 1,
-      }).addTo(map);
 
-      routeLayersRef.current.push(polyline);
+      if (layers.speedSegments) {
+        // Colore cada trecho do trajeto conforme a velocidade registrada no ponto de partida do trecho
+        const speedColor = (kmh: number) => {
+          if (kmh <= 0) return '#64748b'; // parado
+          if (kmh <= 20) return '#10b981'; // tranquilo
+          if (kmh <= 40) return '#f59e0b'; // moderado
+          if (kmh <= 60) return '#f97316'; // rápido
+          return '#ef4444'; // excesso
+        };
+
+        for (let i = 0; i < routeHistory.length - 1; i++) {
+          const segment: [number, number][] = [
+            [routeHistory[i].latitude, routeHistory[i].longitude],
+            [routeHistory[i + 1].latitude, routeHistory[i + 1].longitude],
+          ];
+          const segmentLine = L.polyline(segment, {
+            color: speedColor(routeHistory[i].speed),
+            weight: 5,
+            opacity: 0.9,
+            smoothFactor: 1,
+          }).addTo(map);
+          segmentLine.bindTooltip(`${routeHistory[i].speed} km/h`, { direction: 'top', opacity: 0.9 });
+          routeLayersRef.current.push(segmentLine);
+        }
+      } else {
+        const polyline = L.polyline(points, {
+          color: '#06b6d4',
+          weight: 4,
+          opacity: 0.85,
+          smoothFactor: 1,
+        }).addTo(map);
+
+        routeLayersRef.current.push(polyline);
+      }
 
       // Fit map bounds to route
-      map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+      map.fitBounds(L.latLngBounds(points), { padding: [50, 50] });
     }
 
     if (layers.stops && stoppagesList.length > 0) {
@@ -512,7 +653,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
         stoppageLayersRef.current.push(stopMarker);
       });
     }
-  }, [routeHistory, stoppagesList, layers.routes, layers.stops]);
+  }, [routeHistory, stoppagesList, layers.routes, layers.stops, layers.speedSegments]);
 
   // Render Mock Real-time Traffic Congestion Overlay (mode TRAFFIC only)
   useEffect(() => {
@@ -547,6 +688,157 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       trafficLayersRef.current.push(line);
     });
   }, [viewMode, trafficSegments]);
+
+  // Render Heatmap de Densidade de Ativos (grid de calor por concentração)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    heatmapLayersRef.current.forEach((l) => map.removeLayer(l));
+    heatmapLayersRef.current = [];
+
+    if (!layers.heatmap) return;
+
+    const gridSize = 0.01; // bucket mais fino que o de clustering, focado em densidade visual
+    const densityMap: { [key: string]: { lat: number; lng: number; count: number } } = {};
+
+    displayAssets.forEach((asset) => {
+      const lat = asset.telemetry.latitude;
+      const lng = asset.telemetry.longitude;
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const gridLat = Math.floor(lat / gridSize) * gridSize + gridSize / 2;
+      const gridLng = Math.floor(lng / gridSize) * gridSize + gridSize / 2;
+      const key = `${gridLat.toFixed(4)}_${gridLng.toFixed(4)}`;
+
+      if (!densityMap[key]) densityMap[key] = { lat: gridLat, lng: gridLng, count: 0 };
+      densityMap[key].count += 1;
+    });
+
+    const maxCount = Math.max(1, ...Object.values(densityMap).map((d) => d.count));
+
+    Object.values(densityMap).forEach(({ lat, lng, count }) => {
+      const intensity = count / maxCount;
+      const color =
+        intensity > 0.75 ? '#ef4444' : intensity > 0.5 ? '#f97316' : intensity > 0.25 ? '#f59e0b' : '#10b981';
+
+      const circle = L.circle([lat, lng], {
+        radius: 250 + intensity * 400,
+        color,
+        fillColor: color,
+        fillOpacity: 0.12 + intensity * 0.28,
+        weight: 0,
+      }).addTo(map);
+
+      circle.bindTooltip(`${count} ativo${count > 1 ? 's' : ''} na região`, { direction: 'top' });
+      heatmapLayersRef.current.push(circle);
+    });
+  }, [displayAssets, layers.heatmap]);
+
+  // Render Camada de Alertas Ativos (marcadores por severidade, apenas não reconhecidos)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    alertLayersRef.current.forEach((l) => map.removeLayer(l));
+    alertLayersRef.current = [];
+
+    if (!layers.alerts) return;
+
+    const severityColor: Record<string, string> = {
+      info: '#38bdf8',
+      warning: '#f59e0b',
+      critical: '#ef4444',
+    };
+
+    alerts
+      .filter((alert) => !alert.acknowledged)
+      .forEach((alert) => {
+        const color = severityColor[alert.severity] || severityColor.info;
+        const icon = L.divIcon({
+          className: 'athos-alert-marker-icon',
+          html: `<div style="position: relative; width: 20px; height: 20px;">
+            <span style="position: absolute; inset: -6px; border-radius: 50%; border: 2px solid ${color}; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.6;"></span>
+            <div style="width: 100%; height: 100%; border-radius: 50%; background: ${color}; border: 2px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center;"></div>
+          </div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+
+        const marker = L.marker([alert.latitude, alert.longitude], { icon, zIndexOffset: 400 }).addTo(map);
+        marker.bindTooltip(
+          `<strong>${alert.title}</strong><br/>${alert.assetName}<br/>${alert.message}`,
+          { direction: 'top', opacity: 0.95 }
+        );
+        alertLayersRef.current.push(marker);
+      });
+  }, [alerts, layers.alerts]);
+
+  // Render Camada de Pontos de Interesse (postos, oficinas, pátios, estacionamentos)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    poiLayersRef.current.forEach((l) => map.removeLayer(l));
+    poiLayersRef.current = [];
+
+    if (!layers.pois) return;
+
+    const poiStyle: Record<string, { color: string; label: string }> = {
+      fuel_station: { color: '#f59e0b', label: 'Posto de Combustível' },
+      workshop: { color: '#8b5cf6', label: 'Oficina Mecânica' },
+      yard: { color: '#06b6d4', label: 'Pátio' },
+      parking: { color: '#64748b', label: 'Estacionamento' },
+    };
+
+    pois.forEach((poi) => {
+      const style = poiStyle[poi.category] || poiStyle.parking;
+      const icon = L.divIcon({
+        className: 'athos-poi-marker-icon',
+        html: `<div style="width: 26px; height: 26px; border-radius: 8px; background: ${style.color}; border: 2px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center; color:#fff; font-size: 13px; font-weight: 700;">•</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+
+      const marker = L.marker([poi.latitude, poi.longitude], { icon, zIndexOffset: -100 }).addTo(map);
+      marker.bindTooltip(
+        `<strong>${poi.name}</strong><br/>${style.label}${poi.address ? `<br/>${poi.address}` : ''}`,
+        { direction: 'top' }
+      );
+      poiLayersRef.current.push(marker);
+    });
+  }, [pois, layers.pois]);
+
+  // Render Ferramenta de Medição de Distância (régua com pontos clicados)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    measureLayersRef.current.forEach((l) => map.removeLayer(l));
+    measureLayersRef.current = [];
+
+    if (measurePoints.length === 0) return;
+
+    measurePoints.forEach((pt, idx) => {
+      const vertexIcon = L.divIcon({
+        className: 'athos-measure-vertex-icon',
+        html: `<div style="width:12px;height:12px;border-radius:50%;background:#eab308;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+      const marker = L.marker(pt, { icon: vertexIcon }).addTo(map);
+      if (idx > 0) {
+        const distSoFar = totalPathDistanceMeters(measurePoints.slice(0, idx + 1));
+        marker.bindTooltip(formatDistance(distSoFar), { permanent: true, direction: 'right', className: 'athos-measure-tooltip' });
+      }
+      measureLayersRef.current.push(marker);
+    });
+
+    if (measurePoints.length >= 2) {
+      const line = L.polyline(measurePoints, { color: '#eab308', weight: 3, dashArray: '6, 4' }).addTo(map);
+      measureLayersRef.current.push(line);
+    }
+  }, [measurePoints]);
 
   // Render Waze-style Navigation Route & "You are here" marker
   useEffect(() => {
@@ -614,24 +906,41 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     const enableClusters = layers.clusters && displayAssets.length > 25 && currentZoom < 12;
 
     if (enableClusters) {
-      // Cluster assets into grid buckets
-      const clusterMap: { [gridKey: string]: AssetDevice[] } = {};
-      const gridSize = 0.08; // degrees lat/lng bucket
+      // Agrupamento por distância real em pixels na tela (não por grade fixa em graus),
+      // evitando que ativos próximos caiam em clusters vizinhos por estarem nos dois
+      // lados de uma borda de grade. Flood-fill simples sobre a matriz de distâncias.
+      const CLUSTER_RADIUS_PX = 48;
+      const validAssets = displayAssets.filter(
+        (a) => !isNaN(a.telemetry.latitude) && !isNaN(a.telemetry.longitude)
+      );
+      const screenPoints = validAssets.map((asset) =>
+        map.latLngToContainerPoint([asset.telemetry.latitude, asset.telemetry.longitude])
+      );
 
-      displayAssets.forEach((asset) => {
-        const lat = asset.telemetry.latitude;
-        const lng = asset.telemetry.longitude;
-        if (isNaN(lat) || isNaN(lng)) return;
+      const visited = new Array(validAssets.length).fill(false);
+      const clusterGroups: AssetDevice[][] = [];
 
-        const gridLat = Math.floor(lat / gridSize) * gridSize;
-        const gridLng = Math.floor(lng / gridSize) * gridSize;
-        const key = `${gridLat.toFixed(3)}_${gridLng.toFixed(3)}`;
+      for (let i = 0; i < validAssets.length; i++) {
+        if (visited[i]) continue;
+        visited[i] = true;
+        const stack = [i];
+        const groupIndices: number[] = [];
 
-        if (!clusterMap[key]) clusterMap[key] = [];
-        clusterMap[key].push(asset);
-      });
+        while (stack.length > 0) {
+          const current = stack.pop()!;
+          groupIndices.push(current);
+          for (let j = 0; j < validAssets.length; j++) {
+            if (!visited[j] && screenPoints[current].distanceTo(screenPoints[j]) <= CLUSTER_RADIUS_PX) {
+              visited[j] = true;
+              stack.push(j);
+            }
+          }
+        }
 
-      Object.values(clusterMap).forEach((clusterAssets) => {
+        clusterGroups.push(groupIndices.map((idx) => validAssets[idx]));
+      }
+
+      clusterGroups.forEach((clusterAssets) => {
         if (clusterAssets.length === 1) {
           const asset = clusterAssets[0];
           renderSingleAssetMarker(asset, map);
@@ -734,6 +1043,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     selectedAsset,
     layers.clusters,
     layers.gpsAccuracy,
+    mapZoom,
     onSelectAsset,
     setSelectedAsset,
   ]);
@@ -778,10 +1088,26 @@ export const AssetMap: React.FC<AssetMapProps> = ({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={specializedTitle ? `Buscar em ${specializedTitle}...` : 'Buscar no mapa (Ativo, IMEI, Loja, Placa)...'}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setGeocodeError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleGeocodeSearch();
+                }}
+                placeholder={specializedTitle ? `Buscar em ${specializedTitle}...` : 'Buscar no mapa (Ativo, IMEI, Loja, Placa) ou Enter p/ endereço...'}
                 className="w-full bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
               />
+              {isGeocoding && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-cyan-500 font-mono animate-pulse">
+                  buscando...
+                </span>
+              )}
+              {geocodeError && !isGeocoding && (
+                <div className="absolute left-0 top-full mt-1 text-[10px] text-rose-500 bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-rose-500/30 shadow-lg whitespace-nowrap z-20">
+                  {geocodeError}
+                </div>
+              )}
             </div>
 
             {showFilters && (
@@ -1024,6 +1350,56 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                       className="accent-cyan-500"
                     />
                   </label>
+
+                  <div className="pt-1.5 mt-1 border-t border-slate-200 dark:border-slate-800" />
+
+                  <label className="flex items-center justify-between text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 p-1 rounded">
+                    <span className="flex items-center gap-1.5">
+                      <Flame className="w-3.5 h-3.5 text-orange-500" /> Mapa de Calor
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={layers.heatmap}
+                      onChange={(e) => setLayers({ ...layers, heatmap: e.target.checked })}
+                      className="accent-cyan-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 p-1 rounded">
+                    <span className="flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-500" /> Alertas no Mapa
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={layers.alerts}
+                      onChange={(e) => setLayers({ ...layers, alerts: e.target.checked })}
+                      className="accent-cyan-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 p-1 rounded">
+                    <span className="flex items-center gap-1.5">
+                      <Fuel className="w-3.5 h-3.5 text-amber-500" /> Pontos de Interesse
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={layers.pois}
+                      onChange={(e) => setLayers({ ...layers, pois: e.target.checked })}
+                      className="accent-cyan-500"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 p-1 rounded">
+                    <span className="flex items-center gap-1.5">
+                      <Gauge className="w-3.5 h-3.5 text-cyan-500" /> Rota por Velocidade
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={layers.speedSegments}
+                      onChange={(e) => setLayers({ ...layers, speedSegments: e.target.checked })}
+                      className="accent-cyan-500"
+                    />
+                  </label>
                 </div>
               )}
             </div>
@@ -1039,6 +1415,26 @@ export const AssetMap: React.FC<AssetMapProps> = ({
               title={isFollowing ? 'Acompanhamento automático ativo' : 'Ativar acompanhamento de ativo'}
             >
               <Locate className="w-4 h-4" />
+            </button>
+
+            {/* Measure Distance Tool Toggle */}
+            <button
+              onClick={() => {
+                if (measureMode) {
+                  setMeasureMode(false);
+                  setMeasurePoints([]);
+                } else {
+                  setMeasureMode(true);
+                }
+              }}
+              className={`p-2 rounded-xl transition-colors border ${
+                measureMode
+                  ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                  : 'bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title={measureMode ? 'Finalizar medição de distância' : 'Medir distância no mapa'}
+            >
+              <Ruler className="w-4 h-4" />
             </button>
 
             {/* Fullscreen Button */}
@@ -1088,6 +1484,38 @@ export const AssetMap: React.FC<AssetMapProps> = ({
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1.5 rounded-full bg-red-500" /> Parado
           </div>
+        </div>
+      )}
+
+      {/* Measure Distance Tool Panel */}
+      {measureMode && (
+        <div className="absolute top-20 left-4 z-20 pointer-events-auto bg-white/95 dark:bg-slate-900/95 border border-amber-500/40 backdrop-blur-md px-3 py-2 rounded-2xl shadow-2xl text-xs font-mono text-slate-700 dark:text-slate-300 flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Ruler className="w-3.5 h-3.5 text-amber-500" />
+            <span>
+              Distância Total:{' '}
+              <strong className="text-slate-900 dark:text-white">
+                {formatDistance(totalPathDistanceMeters(measurePoints))}
+              </strong>
+            </span>
+          </div>
+          {measurePoints.length > 0 && (
+            <button
+              onClick={() => setMeasurePoints([])}
+              className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+            >
+              Limpar
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setMeasureMode(false);
+              setMeasurePoints([]);
+            }}
+            className="text-[10px] px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400"
+          >
+            Finalizar
+          </button>
         </div>
       )}
 
