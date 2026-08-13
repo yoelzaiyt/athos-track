@@ -11,6 +11,7 @@ import {
   Upload,
   X,
   SlidersHorizontal,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
 import { LiveMap } from '../components/map/LiveMap';
@@ -106,6 +107,7 @@ export const GeofencesPage: React.FC = () => {
         rules: partial.rules || { entryAlert: true, exitAlert: true, stayAlert: false },
         assignedAssetsCount: 0,
         targetCategory: partial.targetCategory || 'all',
+        isHighRiskZone: partial.isHighRiskZone || false,
       };
       addGeofence(created);
     }
@@ -302,7 +304,11 @@ export const GeofencesPage: React.FC = () => {
             return (
               <div
                 key={geo.id}
-                className="p-3.5 bg-slate-50 dark:bg-slate-950/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2"
+                className={`p-3.5 rounded-xl border space-y-2 ${
+                  geo.isHighRiskZone
+                    ? 'bg-rose-500/5 border-rose-500/30'
+                    : 'bg-slate-50 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800'
+                }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 min-w-0">
@@ -313,6 +319,12 @@ export const GeofencesPage: React.FC = () => {
                     {geo.type.toUpperCase()}
                   </span>
                 </div>
+
+                {geo.isHighRiskZone && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-rose-500/15 text-rose-600 dark:text-rose-400 rounded border border-rose-500/30">
+                    <ShieldAlert className="w-3 h-3" /> Zona de Alto Risco
+                  </span>
+                )}
 
                 <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
                   <span>

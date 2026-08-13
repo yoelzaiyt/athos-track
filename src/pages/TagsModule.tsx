@@ -96,6 +96,24 @@ export const TagsModule: React.FC = () => {
       ),
     },
     {
+      header: 'Serviço (Assinatura)',
+      accessor: (row) => {
+        if (!row.serviceExpireDate) return <span className="text-slate-400 dark:text-slate-600">—</span>;
+        const expired = new Date(row.serviceExpireDate) < new Date();
+        return (
+          <span
+            className={`px-2 py-0.5 text-[10px] font-bold font-mono rounded-full uppercase border ${
+              expired
+                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+            }`}
+          >
+            {expired ? 'Vencido' : 'Ativo'} até {row.serviceExpireDate}
+          </span>
+        );
+      },
+    },
+    {
       header: 'Último Ping',
       accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{row.telemetry.lastCommunication}</span>,
     },

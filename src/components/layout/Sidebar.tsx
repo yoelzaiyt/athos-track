@@ -23,6 +23,8 @@ import {
   ChevronRight,
   Layers,
   Sparkles,
+  Wrench,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -67,6 +69,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
     { key: 'unidades', label: 'Unidades', icon: MapPin },
     { key: 'usuarios', label: 'Usuários', icon: Users },
     { key: 'cercas', label: 'Cercas Virtuais', icon: Layers },
+    { key: 'ordens_servico', label: 'Ordens de Serviço', icon: Wrench },
+    { key: 'recuperacao_ativos', label: 'Recuperação de Ativos', icon: ShieldAlert },
     { key: 'permissoes', label: 'Grupos & Permissões', icon: ShieldCheck },
     { key: 'integracoes', label: 'Integrações & API', icon: Globe },
     { key: 'configuracoes', label: 'Configurações', icon: Settings },
@@ -138,6 +142,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
         active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30 shadow-sm font-bold',
         iconActive: 'text-emerald-600 dark:text-emerald-400',
         iconHover: 'group-hover:text-emerald-500',
+      },
+      ordens_servico: {
+        active: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border-indigo-500/30 shadow-sm font-bold',
+        iconActive: 'text-indigo-600 dark:text-indigo-400',
+        iconHover: 'group-hover:text-indigo-500',
+      },
+      recuperacao_ativos: {
+        active: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30 shadow-sm font-bold',
+        iconActive: 'text-rose-600 dark:text-rose-400',
+        iconHover: 'group-hover:text-rose-500',
       },
     };
 

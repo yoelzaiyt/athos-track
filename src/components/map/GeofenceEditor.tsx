@@ -14,6 +14,7 @@ import {
   MapPin,
   Crosshair,
   RotateCcw,
+  ShieldAlert,
 } from 'lucide-react';
 import { AssetCategory, Geofence } from '../../types';
 import { ASSET_CATEGORY_META } from '../common/AssetIconRegistry';
@@ -58,6 +59,7 @@ export const GeofenceEditor: React.FC<GeofenceEditorProps> = ({
   const [exitAlert, setExitAlert] = useState<boolean>(initialGeofence?.rules.exitAlert ?? true);
   const [stayAlert, setStayAlert] = useState<boolean>(initialGeofence?.rules.stayAlert ?? false);
   const [maxSpeed, setMaxSpeed] = useState<number>(initialGeofence?.rules.maxSpeed || 40);
+  const [isHighRiskZone, setIsHighRiskZone] = useState<boolean>(initialGeofence?.isHighRiskZone ?? false);
 
   useEffect(() => {
     setName(initialGeofence?.name || '');
@@ -69,6 +71,7 @@ export const GeofenceEditor: React.FC<GeofenceEditorProps> = ({
     setExitAlert(initialGeofence?.rules.exitAlert ?? true);
     setStayAlert(initialGeofence?.rules.stayAlert ?? false);
     setMaxSpeed(initialGeofence?.rules.maxSpeed || 40);
+    setIsHighRiskZone(initialGeofence?.isHighRiskZone ?? false);
   }, [initialGeofence]);
 
   const colors = [
@@ -110,6 +113,7 @@ export const GeofenceEditor: React.FC<GeofenceEditorProps> = ({
         stayAlert,
         maxSpeed: maxSpeed > 0 ? maxSpeed : undefined,
       },
+      isHighRiskZone,
     });
   };
 
@@ -303,6 +307,30 @@ export const GeofenceEditor: React.FC<GeofenceEditorProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Zona de Alto Risco (Recuperação de Ativos) */}
+        <label
+          className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${
+            isHighRiskZone
+              ? 'bg-rose-500/10 border-rose-500/40'
+              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800/80'
+          }`}
+        >
+          <span
+            className={`flex items-center gap-1.5 font-medium ${
+              isHighRiskZone ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            Marcar como Zona de Alto Risco (recuperação de ativos)
+          </span>
+          <input
+            type="checkbox"
+            checked={isHighRiskZone}
+            onChange={(e) => setIsHighRiskZone(e.target.checked)}
+            className="accent-rose-500 w-4 h-4 rounded"
+          />
+        </label>
 
         {/* Alert Trigger Rules */}
         <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-2.5">

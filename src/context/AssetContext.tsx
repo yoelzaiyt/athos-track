@@ -12,6 +12,11 @@ import {
   CartRecovery,
   SealStatus,
   SealTriggerMethod,
+  WorkOrder,
+  GreylistEntry,
+  AssetRecoveryCase,
+  RouteTemplate,
+  AssetPairing,
 } from '../types';
 import {
   MOCK_ASSETS,
@@ -22,6 +27,11 @@ import {
   MOCK_MAINTENANCE,
   MOCK_TRIPS,
   MOCK_RECOVERIES,
+  MOCK_WORK_ORDERS,
+  MOCK_GREYLIST,
+  MOCK_RECOVERY_CASES,
+  MOCK_ROUTE_TEMPLATES,
+  MOCK_ASSET_PAIRINGS,
 } from '../mock';
 
 interface AssetContextType {
@@ -33,6 +43,11 @@ interface AssetContextType {
   maintenanceRecords: MaintenanceRecord[];
   trips: TripRecord[];
   recoveries: CartRecovery[];
+  workOrders: WorkOrder[];
+  greylist: GreylistEntry[];
+  recoveryCases: AssetRecoveryCase[];
+  routeTemplates: RouteTemplate[];
+  assetPairings: AssetPairing[];
   selectedAsset: AssetDevice | null;
   searchQuery: string;
   categoryFilter: AssetCategory | 'all';
@@ -65,6 +80,21 @@ interface AssetContextType {
   updateTrip: (tripId: string, updates: Partial<TripRecord>) => void;
   deleteTrip: (tripId: string) => void;
   recoverAsset: (assetId: string, recovery: Omit<CartRecovery, 'id' | 'assetId' | 'assetName' | 'assetCode' | 'unitName' | 'timestamp'>) => void;
+  addWorkOrder: (order: WorkOrder) => void;
+  updateWorkOrder: (orderId: string, updates: Partial<WorkOrder>) => void;
+  deleteWorkOrder: (orderId: string) => void;
+  addGreylistEntry: (entry: GreylistEntry) => void;
+  deleteGreylistEntry: (entryId: string) => void;
+  addRecoveryCase: (recoveryCase: AssetRecoveryCase) => void;
+  updateRecoveryCase: (caseId: string, updates: Partial<AssetRecoveryCase>) => void;
+  addRouteTemplate: (template: RouteTemplate) => void;
+  deleteRouteTemplate: (templateId: string) => void;
+  addAssetPairing: (pairing: AssetPairing) => void;
+  updateAssetPairing: (pairingId: string, updates: Partial<AssetPairing>) => void;
+  deleteAssetPairing: (pairingId: string) => void;
+  sendRemoteCommand: (assetId: string, command: string, label: string) => void;
+  calibrateOdometer: (assetId: string, newOdometer: number) => void;
+  pushOfflineWhitelist: (assetId: string) => void;
   getFilteredAssets: (clientId?: string, unitId?: string) => AssetDevice[];
   getStats: (clientId?: string, unitId?: string) => {
     total: number;
@@ -89,6 +119,11 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(MOCK_MAINTENANCE);
   const [trips, setTrips] = useState<TripRecord[]>(MOCK_TRIPS);
   const [recoveries, setRecoveries] = useState<CartRecovery[]>(MOCK_RECOVERIES);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>(MOCK_WORK_ORDERS);
+  const [greylist, setGreylist] = useState<GreylistEntry[]>(MOCK_GREYLIST);
+  const [recoveryCases, setRecoveryCases] = useState<AssetRecoveryCase[]>(MOCK_RECOVERY_CASES);
+  const [routeTemplates, setRouteTemplates] = useState<RouteTemplate[]>(MOCK_ROUTE_TEMPLATES);
+  const [assetPairings, setAssetPairings] = useState<AssetPairing[]>(MOCK_ASSET_PAIRINGS);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
@@ -312,6 +347,88 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
+  const addWorkOrder = (order: WorkOrder) => {
+    setWorkOrders((prev) => [order, ...prev]);
+  };
+
+  const updateWorkOrder = (orderId: string, updates: Partial<WorkOrder>) => {
+    setWorkOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)));
+  };
+
+  const deleteWorkOrder = (orderId: string) => {
+    setWorkOrders((prev) => prev.filter((o) => o.id !== orderId));
+  };
+
+  const addGreylistEntry = (entry: GreylistEntry) => {
+    setGreylist((prev) => [entry, ...prev]);
+  };
+
+  const deleteGreylistEntry = (entryId: string) => {
+    setGreylist((prev) => prev.filter((g) => g.id !== entryId));
+  };
+
+  const addRecoveryCase = (recoveryCase: AssetRecoveryCase) => {
+    setRecoveryCases((prev) => [recoveryCase, ...prev]);
+  };
+
+  const updateRecoveryCase = (caseId: string, updates: Partial<AssetRecoveryCase>) => {
+    setRecoveryCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, ...updates } : c)));
+  };
+
+  const addRouteTemplate = (template: RouteTemplate) => {
+    setRouteTemplates((prev) => [template, ...prev]);
+  };
+
+  const deleteRouteTemplate = (templateId: string) => {
+    setRouteTemplates((prev) => prev.filter((t) => t.id !== templateId));
+  };
+
+  const addAssetPairing = (pairing: AssetPairing) => {
+    setAssetPairings((prev) => [pairing, ...prev]);
+  };
+
+  const updateAssetPairing = (pairingId: string, updates: Partial<AssetPairing>) => {
+    setAssetPairings((prev) => prev.map((p) => (p.id === pairingId ? { ...p, ...updates } : p)));
+  };
+
+  const deleteAssetPairing = (pairingId: string) => {
+    setAssetPairings((prev) => prev.filter((p) => p.id !== pairingId));
+  };
+
+  const sendRemoteCommand = (assetId: string, command: string, label: string) => {
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, lastRemoteCommand: { command, label, sentAt: 'Agora' } } : a))
+    );
+  };
+
+  const calibrateOdometer = (assetId: string, newOdometer: number) => {
+    setAssets((prev) =>
+      prev.map((a) =>
+        a.id === assetId
+          ? {
+              ...a,
+              telemetry: { ...a.telemetry, odometer: newOdometer },
+              lastRemoteCommand: { command: '6B', label: 'Calibração de Odômetro', sentAt: 'Agora' },
+            }
+          : a
+      )
+    );
+  };
+
+  const pushOfflineWhitelist = (assetId: string) => {
+    setAssets((prev) =>
+      prev.map((a) =>
+        a.id === assetId
+          ? {
+              ...a,
+              offlineWhitelistSyncedAt: 'Agora',
+              lastRemoteCommand: { command: '94Down', label: 'Sincronização de Whitelist Offline', sentAt: 'Agora' },
+            }
+          : a
+      )
+    );
+  };
+
   const getFilteredAssets = (clientId = 'all', unitId = 'all'): AssetDevice[] => {
     return assets.filter((asset) => {
       if (clientId !== 'all' && asset.clientId !== clientId) return false;
@@ -370,6 +487,11 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         maintenanceRecords,
         trips,
         recoveries,
+        workOrders,
+        greylist,
+        recoveryCases,
+        routeTemplates,
+        assetPairings,
         selectedAsset,
         searchQuery,
         categoryFilter,
@@ -402,6 +524,21 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateTrip,
         deleteTrip,
         recoverAsset,
+        addWorkOrder,
+        updateWorkOrder,
+        deleteWorkOrder,
+        addGreylistEntry,
+        deleteGreylistEntry,
+        addRecoveryCase,
+        updateRecoveryCase,
+        addRouteTemplate,
+        deleteRouteTemplate,
+        addAssetPairing,
+        updateAssetPairing,
+        deleteAssetPairing,
+        sendRemoteCommand,
+        calibrateOdometer,
+        pushOfflineWhitelist,
         getFilteredAssets,
         getStats,
       }}

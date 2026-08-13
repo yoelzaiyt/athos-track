@@ -1,6 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { X, Save, Cpu, Radio, MapPin, Building, Wifi, ScanLine } from 'lucide-react';
-import { AssetDevice, AssetCategory, AssetSubcategory, AssetStatus } from '../../types';
+import {
+  X,
+  Save,
+  Cpu,
+  Radio,
+  MapPin,
+  Building,
+  Wifi,
+  ScanLine,
+  Satellite,
+  CreditCard,
+  Lock,
+  Unlock,
+  Fuel,
+  Clock,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react';
+import { AssetDevice, AssetCategory, AssetSubcategory, AssetStatus, PositionSource, ScheduledUnlockWindow, FuelTankCalibration } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { ASSET_CATEGORY_META } from './AssetIconRegistry';
 import { QrScannerModal } from './QrScannerModal';
@@ -61,6 +80,18 @@ const SUBCATEGORY_OPTIONS: Record<AssetCategory, { value: AssetSubcategory; labe
     { value: 'tractor', label: 'Trator' },
   ],
 };
+
+const POSITIONING_SOURCE_OPTIONS: PositionSource[] = ['GPS', 'Wi-Fi', 'LBS', 'BLE Gateway'];
+
+const DAY_LABELS: { value: number; label: string }[] = [
+  { value: 0, label: 'Dom' },
+  { value: 1, label: 'Seg' },
+  { value: 2, label: 'Ter' },
+  { value: 3, label: 'Qua' },
+  { value: 4, label: 'Qui' },
+  { value: 5, label: 'Sex' },
+  { value: 6, label: 'Sáb' },
+];
 
 const STATUS_OPTIONS: AssetStatus[] = [
   'offline',
@@ -124,6 +155,12 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [icBindStep, setIcBindStep] = useState<'idle' | 'waiting' | 'success'>('idle');
+  const [windowDraft, setWindowDraft] = useState<{ startTime: string; endTime: string; daysOfWeek: number[] }>({
+    startTime: '08:00',
+    endTime: '18:00',
+    daysOfWeek: [1, 2, 3, 4, 5],
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -140,6 +177,7 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
       );
     }
     setErrors({});
+    setIcBindStep('idle');
   }, [isOpen, editingDevice]);
 
   if (!isOpen) return null;
@@ -164,6 +202,108 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
   };
 
   const subcategoryOptions = SUBCATEGORY_OPTIONS[form.category] || [];
+  const showFleetControls = form.category === 'vehicle' || form.category === 'truck';
+
+  const togglePositioningSource = (source: PositionSource) => {
+    setForm((prev) => {
+      const current = prev.positioningPriority || [];
+      const next = current.includes(source) ? current.filter((s) => s !== source) : [...current, source];
+      return { ...prev, positioningPriority: next };
+    });
+  };
+
+  const handleBindCard = () => {
+    setIcBindStep('waiting');
+    setTimeout(() => {
+      const cardId = `IC-CARD-${Math.floor(10000 + Math.random() * 89999)}`;
+      setForm((prev) => ({
+        ...prev,
+        doorLockCardId: cardId,
+        doorLockCardBoundAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      }));
+      setIcBindStep('success');
+    }, 1800);
+  };
+
+  const handleUnbindCard = () => {
+    setForm((prev) => ({ ...prev, doorLockCardId: undefined, doorLockCardBoundAt: undefined }));
+    setIcBindStep('idle');
+  };
+
+  const toggleDraftDay = (day: number) => {
+    setWindowDraft((prev) => ({
+      ...prev,
+      daysOfWeek: prev.daysOfWeek.includes(day)
+        ? prev.daysOfWeek.filter((d) => d !== day)
+        : [...prev.daysOfWeek, day].sort((a, b) => a - b),
+    }));
+  };
+
+  const addUnlockWindow = () => {
+    if (windowDraft.daysOfWeek.length === 0) return;
+    const newWindow: ScheduledUnlockWindow = {
+      id: `unl_${Date.now()}`,
+      startTime: windowDraft.startTime,
+      endTime: windowDraft.endTime,
+      daysOfWeek: windowDraft.daysOfWeek,
+    };
+    setForm((prev) => ({
+      ...prev,
+      scheduledUnlockWindows: [...(prev.scheduledUnlockWindows || []), newWindow],
+    }));
+  };
+
+  const removeUnlockWindow = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      scheduledUnlockWindows: (prev.scheduledUnlockWindows || []).filter((w) => w.id !== id),
+    }));
+  };
+
+  const emptyAdCurve = (): FuelTankCalibration['adCurve'] => [
+    { fraction: '1/4', adValue: 0 },
+    { fraction: '1/2', adValue: 0 },
+    { fraction: '3/4', adValue: 0 },
+    { fraction: 'cheio', adValue: 0 },
+  ];
+
+  const getTank = (n: 1 | 2): FuelTankCalibration | undefined =>
+    form.telemetry.fuelTanks?.find((t) => t.tankNumber === n);
+
+  const updateTank = (n: 1 | 2, updates: Partial<FuelTankCalibration>) => {
+    setForm((prev) => {
+      const tanks = prev.telemetry.fuelTanks || [];
+      const existing = tanks.find((t) => t.tankNumber === n);
+      const base: FuelTankCalibration = existing || {
+        tankNumber: n,
+        capacityLiters: 0,
+        volumeLiters: 0,
+        percent: 0,
+        adCurve: emptyAdCurve(),
+      };
+      const updatedTank = { ...base, ...updates };
+      const others = tanks.filter((t) => t.tankNumber !== n);
+      return {
+        ...prev,
+        telemetry: {
+          ...prev.telemetry,
+          fuelTanks: [...others, updatedTank].sort((a, b) => a.tankNumber - b.tankNumber),
+        },
+      };
+    });
+  };
+
+  const removeTank = (n: 1 | 2) => {
+    setForm((prev) => ({
+      ...prev,
+      telemetry: { ...prev.telemetry, fuelTanks: (prev.telemetry.fuelTanks || []).filter((t) => t.tankNumber !== n) },
+    }));
+  };
+
+  const updateTankAd = (n: 1 | 2, fraction: FuelTankCalibration['adCurve'][number]['fraction'], adValue: number) => {
+    const curve = getTank(n)?.adCurve || emptyAdCurve();
+    updateTank(n, { adCurve: curve.map((p) => (p.fraction === fraction ? { ...p, adValue } : p)) });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
@@ -431,6 +571,371 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Cascata de Posicionamento */}
+          <div className="space-y-3">
+            <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              <Satellite className="w-3.5 h-3.5 text-emerald-500" /> Cascata de Posicionamento (Fallback)
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Selecione, na ordem desejada, as fontes de posicionamento usadas quando a principal falhar (ex: GPS →
+              Wi-Fi → LBS / estação-base).
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {POSITIONING_SOURCE_OPTIONS.map((source) => {
+                const order = (form.positioningPriority || []).indexOf(source);
+                const active = order !== -1;
+                return (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => togglePositioningSource(source)}
+                    className={`px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold transition-colors border flex items-center gap-1.5 ${
+                      active
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 font-bold'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {active && (
+                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] flex items-center justify-center font-bold">
+                        {order + 1}
+                      </span>
+                    )}
+                    {source}
+                  </button>
+                );
+              })}
+            </div>
+            {(form.positioningPriority?.length || 0) > 0 && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                Ordem ativa: {(form.positioningPriority || []).join(' > ')}
+              </p>
+            )}
+          </div>
+
+          {/* Controles de Frota: Trava com Cartão IC + Auto-Destrava + Multi-Tanque */}
+          {showFleetControls && (
+            <>
+              <div className="space-y-3">
+                <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-violet-500" /> Trava de Porta — Cartão IC de Proximidade
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-2.5">
+                  {form.doorLockCardId ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 font-bold font-mono">
+                          <Lock className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                          {form.doorLockCardId}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                          Vinculado em {form.doorLockCardBoundAt}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleUnbindCard}
+                        className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg font-semibold flex items-center gap-1.5 transition-colors"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        Desvincular
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                        {icBindStep === 'waiting'
+                          ? 'Aguardando aproximação do cartão IC do leitor... (bipe rápido)'
+                          : 'Nenhum cartão IC vinculado à trava de porta.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleBindCard}
+                        disabled={icBindStep === 'waiting'}
+                        className="shrink-0 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white rounded-lg font-semibold flex items-center gap-1.5 transition-colors"
+                      >
+                        {icBindStep === 'waiting' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5" />
+                        )}
+                        {icBindStep === 'waiting' ? 'Vinculando...' : 'Vincular Cartão'}
+                      </button>
+                    </div>
+                  )}
+                  {icBindStep === 'success' && (
+                    <p className="text-emerald-600 dark:text-emerald-400 text-[10px] flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Bipe longo seguido de bipes rápidos — vínculo concluído com sucesso.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-cyan-500" /> Automação de Trava
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-3">
+                  <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 cursor-pointer">
+                    <span>Destravar automaticamente ao entrar na cerca virtual</span>
+                    <input
+                      type="checkbox"
+                      checked={form.autoUnlockOnGeofenceEntry || false}
+                      onChange={(e) => setForm({ ...form, autoUnlockOnGeofenceEntry: e.target.checked })}
+                      className="accent-cyan-500 w-4 h-4 rounded"
+                    />
+                  </label>
+
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">Janelas de Destrava Programada</span>
+                    {(form.scheduledUnlockWindows || []).map((w) => (
+                      <div
+                        key={w.id}
+                        className="flex items-center justify-between gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5"
+                      >
+                        <span className="font-mono text-slate-700 dark:text-slate-300">
+                          {w.startTime}–{w.endTime} · {w.daysOfWeek.map((d) => DAY_LABELS[d].label).join(', ')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeUnlockWindow(w.id)}
+                          className="text-slate-400 hover:text-rose-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="time"
+                        value={windowDraft.startTime}
+                        onChange={(e) => setWindowDraft((prev) => ({ ...prev, startTime: e.target.value }))}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-900 dark:text-slate-200"
+                      />
+                      <span className="text-slate-400">até</span>
+                      <input
+                        type="time"
+                        value={windowDraft.endTime}
+                        onChange={(e) => setWindowDraft((prev) => ({ ...prev, endTime: e.target.value }))}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-900 dark:text-slate-200"
+                      />
+                      <div className="flex items-center gap-1">
+                        {DAY_LABELS.map((d) => (
+                          <button
+                            key={d.value}
+                            type="button"
+                            onClick={() => toggleDraftDay(d.value)}
+                            className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-colors ${
+                              windowDraft.daysOfWeek.includes(d.value)
+                                ? 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40'
+                                : 'bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            {d.label[0]}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addUnlockWindow}
+                        className="ml-auto px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Adicionar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <Fuel className="w-3.5 h-3.5 text-amber-500" /> Calibração Multi-Tanque de Combustível
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {([1, 2] as const).map((n) => {
+                    const tank = getTank(n);
+                    return (
+                      <div
+                        key={n}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-700 dark:text-slate-200">Tanque {n}</span>
+                          {tank ? (
+                            <button
+                              type="button"
+                              onClick={() => removeTank(n)}
+                              className="text-slate-400 hover:text-rose-500 transition-colors"
+                              title={`Remover Tanque ${n}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => updateTank(n, {})}
+                              className="text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Ativar
+                            </button>
+                          )}
+                        </div>
+                        {tank && (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-slate-500 dark:text-slate-400 mb-0.5">Capacidade (L)</label>
+                                <input
+                                  type="number"
+                                  value={tank.capacityLiters}
+                                  onChange={(e) => updateTank(n, { capacityLiters: Number(e.target.value) })}
+                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 font-mono text-slate-900 dark:text-slate-200"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-slate-500 dark:text-slate-400 mb-0.5">Volume Atual (L)</label>
+                                <input
+                                  type="number"
+                                  value={tank.volumeLiters}
+                                  onChange={(e) => {
+                                    const vol = Number(e.target.value);
+                                    const pct = tank.capacityLiters > 0 ? Math.round((vol / tank.capacityLiters) * 100) : 0;
+                                    updateTank(n, { volumeLiters: vol, percent: pct });
+                                  }}
+                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 font-mono text-slate-900 dark:text-slate-200"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 dark:text-slate-400">Curva AD por fração ({tank.percent}% atual)</span>
+                              <div className="grid grid-cols-4 gap-1.5 mt-1">
+                                {tank.adCurve.map((p) => (
+                                  <div key={p.fraction}>
+                                    <label className="block text-[9px] text-slate-400 dark:text-slate-500 text-center mb-0.5">
+                                      {p.fraction}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      value={p.adValue}
+                                      onChange={(e) => updateTankAd(n, p.fraction, Number(e.target.value))}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-1.5 py-1 font-mono text-center text-slate-900 dark:text-slate-200"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-indigo-500" /> Câmeras &amp; Captura Agendada de Foto
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-3">
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Nº de Canais de Câmera</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={8}
+                      value={form.cameraChannelsCount ?? 0}
+                      onChange={(e) => setForm({ ...form, cameraChannelsCount: Number(e.target.value) })}
+                      className="w-24 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1.5 font-mono text-slate-900 dark:text-slate-200 focus:outline-none"
+                    />
+                  </div>
+
+                  <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 cursor-pointer pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                    <span>Captura de foto agendada (diferente do snapshot único)</span>
+                    <input
+                      type="checkbox"
+                      checked={form.scheduledPhotoCapture?.enabled || false}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          scheduledPhotoCapture: {
+                            enabled: e.target.checked,
+                            intervalMinutes: form.scheduledPhotoCapture?.intervalMinutes || 15,
+                            onlyWhenIgnitionOn: form.scheduledPhotoCapture?.onlyWhenIgnitionOn ?? true,
+                            fromTime: form.scheduledPhotoCapture?.fromTime || '06:00',
+                            toTime: form.scheduledPhotoCapture?.toTime || '20:00',
+                          },
+                        })
+                      }
+                      className="accent-indigo-500 w-4 h-4 rounded"
+                    />
+                  </label>
+
+                  {form.scheduledPhotoCapture?.enabled && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div>
+                        <label className="block text-slate-500 dark:text-slate-400 mb-0.5">Intervalo (min)</label>
+                        <input
+                          type="number"
+                          value={form.scheduledPhotoCapture.intervalMinutes}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              scheduledPhotoCapture: { ...form.scheduledPhotoCapture!, intervalMinutes: Number(e.target.value) },
+                            })
+                          }
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 font-mono text-slate-900 dark:text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-500 dark:text-slate-400 mb-0.5">De</label>
+                        <input
+                          type="time"
+                          value={form.scheduledPhotoCapture.fromTime}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              scheduledPhotoCapture: { ...form.scheduledPhotoCapture!, fromTime: e.target.value },
+                            })
+                          }
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-900 dark:text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-500 dark:text-slate-400 mb-0.5">Até</label>
+                        <input
+                          type="time"
+                          value={form.scheduledPhotoCapture.toTime}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              scheduledPhotoCapture: { ...form.scheduledPhotoCapture!, toTime: e.target.value },
+                            })
+                          }
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-900 dark:text-slate-200"
+                        />
+                      </div>
+                      <label className="flex flex-col items-start justify-end gap-1 cursor-pointer">
+                        <span className="text-slate-500 dark:text-slate-400">Só c/ ignição ligada</span>
+                        <input
+                          type="checkbox"
+                          checked={form.scheduledPhotoCapture.onlyWhenIgnitionOn}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              scheduledPhotoCapture: { ...form.scheduledPhotoCapture!, onlyWhenIgnitionOn: e.target.checked },
+                            })
+                          }
+                          className="accent-indigo-500 w-4 h-4 rounded"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
             <button

@@ -38,6 +38,24 @@ export const ClientsPage: React.FC = () => {
         </span>
       ),
     },
+    {
+      header: 'Serviço (Conta) — CExpireDate',
+      accessor: (row) => {
+        if (!row.serviceExpireDate) return <span className="text-slate-400 dark:text-slate-600">Sem vencimento</span>;
+        const expired = new Date(row.serviceExpireDate) < new Date();
+        return (
+          <span
+            className={`px-2 py-0.5 text-[10px] font-bold font-mono rounded-full uppercase border ${
+              expired
+                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+            }`}
+          >
+            {expired ? 'Vencido em' : 'Ativo até'} {row.serviceExpireDate}
+          </span>
+        );
+      },
+    },
   ];
 
   return (

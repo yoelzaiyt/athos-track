@@ -18,6 +18,8 @@ import { AlertsPage } from './pages/AlertsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { GeofencesPage } from './pages/GeofencesPage';
+import { WorkOrdersModule } from './pages/WorkOrdersModule';
+import { AssetRecoveryModule } from './pages/AssetRecoveryModule';
 import { ClientsPage } from './pages/admin/ClientsPage';
 import { UnitsPage } from './pages/admin/UnitsPage';
 import { UsersPage } from './pages/admin/UsersPage';
@@ -63,6 +65,10 @@ const AppContent: React.FC = () => {
         return <ReportsPage />;
       case 'cercas':
         return <GeofencesPage />;
+      case 'ordens_servico':
+        return <WorkOrdersModule />;
+      case 'recuperacao_ativos':
+        return <AssetRecoveryModule />;
       case 'clientes':
         return <ClientsPage />;
       case 'unidades':

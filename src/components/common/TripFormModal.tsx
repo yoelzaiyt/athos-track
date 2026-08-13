@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { X, Save, Route } from 'lucide-react';
-import { TripRecord, TripStatus, AssetDevice, Driver } from '../../types';
+import { X, Save, Route, Navigation2, AlertTriangle } from 'lucide-react';
+import { TripRecord, TripStatus, AssetDevice, Driver, RouteTemplate } from '../../types';
 
 export interface TripFormModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ export interface TripFormModalProps {
   editingTrip?: TripRecord | null;
   vehicles: AssetDevice[];
   drivers: Driver[];
+  routeTemplates?: RouteTemplate[];
 }
 
 const STATUS_OPTIONS: { value: TripStatus; label: string }[] = [
@@ -41,6 +42,7 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
   editingTrip,
   vehicles,
   drivers,
+  routeTemplates = [],
 }) => {
   const [form, setForm] = useState<TripRecord>(() => emptyTrip(vehicles[0]));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -190,6 +192,48 @@ export const TripFormModal: React.FC<TripFormModalProps> = ({
               />
             </div>
           </div>
+
+          {routeTemplates.length > 0 && (
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 space-y-2.5">
+              <span className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <Navigation2 className="w-3.5 h-3.5 text-indigo-500" /> Modelo de Rota (Yaw / Desvio)
+              </span>
+              <select
+                value={form.routeTemplateId || ''}
+                onChange={(e) => {
+                  const tpl = routeTemplates.find((t) => t.id === e.target.value);
+                  setForm({
+                    ...form,
+                    routeTemplateId: e.target.value || undefined,
+                    origin: tpl?.origin || form.origin,
+                    destination: tpl?.destination || form.destination,
+                    distanceKm: tpl?.estDistanceKm ?? form.distanceKm,
+                  });
+                }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none"
+              >
+                <option value="">Nenhum (rota livre)</option>
+                {routeTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {form.routeTemplateId && (
+                <label className="flex items-center justify-between text-slate-600 dark:text-slate-300 cursor-pointer pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Desvio de rota detectado (Yaw)
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form.deviationDetected || false}
+                    onChange={(e) => setForm({ ...form, deviationDetected: e.target.checked })}
+                    className="accent-amber-500 w-4 h-4 rounded"
+                  />
+                </label>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Status da Viagem</label>
