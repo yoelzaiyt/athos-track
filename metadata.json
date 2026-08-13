@@ -1,0 +1,6 @@
+{
+  "name": "ATHOS TRACK",
+  "description": "Plataforma SaaS premium de rastreamento, monitoramento e gestão modular de ativos (Frotas, Carrinhos, Ativos, Cargas, Empilhadeiras, Bicicletas e Tags)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

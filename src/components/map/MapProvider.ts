@@ -1,0 +1,137 @@
+import L from 'leaflet';
+import { MapViewMode, ThemeMode } from '../../types';
+
+const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
+
+/**
+ * Tema das camadas do mapa (claro/escuro) decidido automaticamente pelo horário de
+ * Brasília, independente do tema manual escolhido pelo usuário para as páginas
+ * (aquele é controlado pelo ícone no topo e não deve afetar a renderização do mapa).
+ * Dia (06h–17h59 em Brasília) → tiles claros; fora disso → tiles escuros.
+ */
+export function getBrasiliaAutoMapTheme(): ThemeMode {
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: BRASILIA_TIMEZONE,
+    hour: 'numeric',
+    hour12: false,
+  }).format(new Date());
+  const hour = parseInt(hourStr, 10) % 24;
+  return hour >= 6 && hour < 18 ? 'light' : 'dark';
+}
+
+export interface TileProviderConfig {
+  id: MapViewMode;
+  name: string;
+  url: string;
+  attribution: string;
+  overlayUrl?: string; // For Hybrid mode road/label overlay
+  overlayAttribution?: string;
+  maxZoom: number;
+}
+
+export interface MapProviderAbstraction {
+  getTileConfig(mode: MapViewMode, themeMode?: ThemeMode): TileProviderConfig;
+  loadPreferences(): { mode: MapViewMode; zoom: number; layers: Record<string, boolean> };
+  savePreferences(prefs: { mode?: MapViewMode; zoom?: number; layers?: Record<string, boolean> }): void;
+}
+
+class AthosMapProvider implements MapProviderAbstraction {
+  private STORAGE_KEY = 'athos_map_preferences_v1';
+
+  public getTileConfig(mode: MapViewMode, themeMode: ThemeMode = 'dark'): TileProviderConfig {
+    if (mode === '2D') {
+      if (themeMode === 'light') {
+        return {
+          id: '2D',
+          name: 'Vetor 2D Operacional (Claro)',
+          url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+          maxZoom: 19,
+        };
+      }
+      return {
+        id: '2D',
+        name: 'Vetor 2D Operacional (Escuro)',
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19,
+      };
+    }
+
+    if (mode === 'SATELLITE') {
+      return {
+        id: 'SATELLITE',
+        name: 'Imagem de Satélite HD',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics, USDA, USGS',
+        maxZoom: 19,
+      };
+    }
+
+    // HYBRID
+    return {
+      id: 'HYBRID',
+      name: 'Satélite Híbrido com Ruas',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '&copy; Esri &copy; OpenStreetMap',
+      overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+      overlayAttribution: '&copy; CARTO &copy; OpenStreetMap',
+      maxZoom: 19,
+    };
+  }
+
+  public loadPreferences() {
+    try {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          mode: (parsed.mode as MapViewMode) || '2D',
+          zoom: parsed.zoom || 13,
+          layers: parsed.layers || {
+            geofences: true,
+            routes: true,
+            alerts: true,
+            events: true,
+            stops: true,
+            clusters: true,
+            gpsAccuracy: true,
+            heatmap: false,
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load map preferences', e);
+    }
+    return {
+      mode: '2D' as MapViewMode,
+      zoom: 13,
+      layers: {
+        geofences: true,
+        routes: true,
+        alerts: true,
+        events: true,
+        stops: true,
+        clusters: true,
+        gpsAccuracy: true,
+        heatmap: false,
+      },
+    };
+  }
+
+  public savePreferences(prefs: { mode?: MapViewMode; zoom?: number; layers?: Record<string, boolean> }) {
+    try {
+      const existing = this.loadPreferences();
+      const updated = {
+        ...existing,
+        ...prefs,
+        layers: { ...existing.layers, ...(prefs.layers || {}) },
+      };
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save map preferences', e);
+    }
+  }
+}
+
+export const mapProvider = new AthosMapProvider();
