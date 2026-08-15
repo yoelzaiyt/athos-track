@@ -16,7 +16,8 @@
     "brgps:sync-once": "tsx server/brgps-sync/index.ts sync-once",
     "brgps:sync": "tsx server/brgps-sync/index.ts sync",
     "brgps:history": "tsx server/brgps-sync/index.ts history",
-    "brgps:test": "tsx server/brgps-sync/index.ts test"
+    "brgps:test": "tsx server/brgps-sync/index.ts test",
+    "brgps:health-check": "tsx scripts/brgps-health-check.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
