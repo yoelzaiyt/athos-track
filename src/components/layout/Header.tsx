@@ -12,7 +12,7 @@ import {
   Settings,
   LogOut,
   ShieldAlert,
-  Radio,
+  Satellite,
   SlidersHorizontal,
   Sparkles,
   Command,
@@ -78,18 +78,24 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate }) => {
             onClick={() => onNavigate('dashboard')}
             title="Ir para o Dashboard Principal"
           >
-            <div className="relative w-10 h-10 bg-gradient-to-tr from-cyan-600 via-indigo-600 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400/40 group-hover:scale-105 transition-all duration-300">
-              <Radio className="w-5 h-5 text-white animate-pulse" />
-              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white dark:border-slate-900" />
+            <div className="relative w-9 h-9 shrink-0">
+              <span className="absolute inset-0 rounded-xl bg-blue-500 opacity-0 group-hover:opacity-30 group-hover:animate-ping transition-opacity" />
+              <div className="relative w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-600/25 ring-1 ring-white/10 group-hover:scale-105 transition-all duration-300">
+                <Satellite className="w-4.5 h-4.5 text-white" />
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border-2 border-white dark:border-slate-900" />
+              </div>
             </div>
             <div>
-              <div className="text-base font-black tracking-wider text-slate-900 dark:text-white font-mono flex items-center gap-1">
-                ATHOS <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">TRACK</span>
+              <div className="text-sm font-black tracking-wider text-slate-900 dark:text-white font-mono flex items-center gap-1">
+                ATHOS <span className="text-blue-600 dark:text-blue-400 font-extrabold">TRACK</span>
               </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 tracking-widest uppercase font-semibold flex items-center gap-1">
-                <span>Telemetria Pro</span>
-                <span className="w-1 h-1 bg-cyan-500 rounded-full" />
-                <span className="text-emerald-600 dark:text-emerald-400 font-mono">v3.2</span>
+              <div className="flex items-center gap-1">
+                <span className="px-1.5 py-[1px] rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[8px] font-semibold uppercase tracking-wide">
+                  Telemetria Pro
+                </span>
+                <span className="px-1.5 py-[1px] rounded-full bg-slate-500/10 border border-slate-500/20 text-slate-500 dark:text-slate-400 text-[8px] font-mono font-bold">
+                  v3.2
+                </span>
               </div>
             </div>
           </div>
@@ -307,47 +313,63 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate }) => {
           <div className="relative pl-2 border-l border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
+              className="group flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-all"
             >
-              {user?.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={user.name}
-                  className="w-8 h-8 rounded-full border border-cyan-500/40 object-cover shadow-sm"
-                />
-              ) : (
-                <div className="w-8 h-8 bg-gradient-to-tr from-cyan-600 to-indigo-600 text-white font-bold text-xs rounded-full flex items-center justify-center shadow-md shadow-cyan-500/20">
-                  {user?.name.substring(0, 2).toUpperCase()}
-                </div>
-              )}
-              <div className="hidden sm:block text-left">
-                <div className="text-xs font-bold text-slate-900 dark:text-slate-200 leading-tight">
+              <div className="relative shrink-0">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-full border border-cyan-500/40 object-cover shadow-sm transition-transform group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-to-tr from-cyan-500 via-violet-500 to-fuchsia-400 text-white font-bold text-xs rounded-full flex items-center justify-center shadow-md shadow-violet-500/20 transition-transform group-hover:scale-105">
+                    {user?.name.substring(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-950" />
+              </div>
+              <div className="hidden sm:block text-left leading-tight">
+                <div className="text-[11px] font-bold text-slate-900 dark:text-slate-200">
                   {user?.name}
                 </div>
-                <div className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono font-bold uppercase tracking-wider">
+                <span className="inline-block mt-0.5 px-1.5 py-[1px] rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-[8px] font-mono font-bold uppercase tracking-wide">
                   {user?.role.replace('_', ' ')}
-                </div>
+                </span>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`}
+              />
             </button>
 
             {isProfileMenuOpen && (
-              <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="p-2.5 border-b border-slate-200 dark:border-slate-800">
-                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{user?.name}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">{user?.email}</div>
+              <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 pointer-events-none" />
+
+                <div className="relative flex items-center gap-2.5 p-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user.name} className="w-9 h-9 rounded-full border border-cyan-500/40 object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 shrink-0 bg-gradient-to-tr from-cyan-500 via-violet-500 to-fuchsia-400 text-white font-bold text-xs rounded-full flex items-center justify-center">
+                      {user?.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{user?.name}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate">{user?.email}</div>
+                  </div>
                 </div>
 
                 {/* Simulation Role Switcher for testing RBAC permissions */}
                 <div className="my-2.5 p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1 font-mono">
+                  <div className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1 font-mono">
                     <SlidersHorizontal className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
                     <span>Simular Papel RBAC</span>
                   </div>
                   <select
                     value={user?.role}
                     onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer font-medium"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 text-[11px] rounded-lg p-1.5 focus:outline-none focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/10 cursor-pointer font-medium transition-colors"
                   >
                     <option value="ATHOS_ADMIN">Administrador ATHOS</option>
                     <option value="CLIENT_ADMIN">Administrador Cliente</option>
@@ -365,9 +387,9 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate }) => {
                       setIsProfileMenuOpen(false);
                       onNavigate('configuracoes');
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-colors"
+                    className="group/item w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-medium transition-all hover:translate-x-0.5"
                   >
-                    <Settings className="w-4 h-4 text-slate-400" />
+                    <Settings className="w-3.5 h-3.5 text-slate-400 transition-transform group-hover/item:rotate-45" />
                     <span>Configurações do Sistema</span>
                   </button>
                   <button
@@ -375,9 +397,9 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate }) => {
                       setIsProfileMenuOpen(false);
                       logout();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl font-medium transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl font-medium transition-all hover:translate-x-0.5"
                   >
-                    <LogOut className="w-4 h-4" />
+                    <LogOut className="w-3.5 h-3.5" />
                     <span>Sair da Plataforma</span>
                   </button>
                 </div>

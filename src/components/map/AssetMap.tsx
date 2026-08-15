@@ -39,6 +39,8 @@ import {
   ChevronDown,
   Mountain,
   Moon,
+  Sun,
+  SunMoon,
   Route as RouteIcon,
   TrafficCone,
   Fuel,
@@ -59,6 +61,7 @@ import {
 } from '../../types';
 import { useAssets } from '../../context/AssetContext';
 import { useAuth } from '../../context/AuthContext';
+import { formatRelativeTimePtBr } from '../../lib/format';
 import { mapProvider, getBrasiliaAutoMapTheme } from './MapProvider';
 import {
   createAssetLeafletMarkerIcon,
@@ -80,6 +83,10 @@ import {
   RouteResult,
   LatLng,
 } from './RoutingService';
+
+const BATTERY_LABEL: Record<string, string> = {
+  UNKNOWN: 'Desconhecida', CRITICAL: 'Crítica', LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta',
+};
 
 function haversineMeters(a: [number, number], b: [number, number]): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -131,8 +138,11 @@ export interface AssetMapProps {
   polygonDraftMode?: boolean;
   polygonDraftPoints?: [number, number][];
   onPolygonPointAdded?: (lat: number, lng: number) => void;
-  /** Planta baixa / imagem de referência sobreposta ao mapa para desenhar cercas com precisão. */
-  floorPlanOverlay?: { url: string; bounds: [[number, number], [number, number]]; opacity: number } | null;
+  /** Planta baixa / imagem de referência sobreposta ao mapa para desenhar cercas com precisão.
+   *  Arrastável (clique e arraste move) e ajustável (roda do mouse redimensiona) diretamente no mapa. */
+  floorPlanOverlay?: { url: string; bounds: [[number, number], [number, number]]; opacity: number; sizeMeters?: number } | null;
+  onFloorPlanCenterChange?: (lat: number, lng: number) => void;
+  onFloorPlanSizeChange?: (meters: number) => void;
   specializedCategory?: AssetCategory;
   specializedTitle?: string;
   onOpenHistory?: (asset: AssetDevice) => void;
@@ -164,6 +174,8 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   polygonDraftPoints = [],
   onPolygonPointAdded,
   floorPlanOverlay = null,
+  onFloorPlanCenterChange,
+  onFloorPlanSizeChange,
   specializedCategory,
   specializedTitle,
   onOpenHistory,
@@ -172,17 +184,24 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   onOpenReports,
 }) => {
   const { assets, geofences, trafficSegments, alerts, pois, selectedAsset, setSelectedAsset } = useAssets();
-  const { theme } = useAuth();
+  const { theme, user } = useAuth();
+  const isTechnicalUser = user?.role === 'ATHOS_ADMIN' || user?.role === 'FLEET_MANAGER';
 
-  // Tema dos tiles do mapa: automático pelo horário de Brasília, independente do
-  // ícone de tema manual das páginas (que só afeta a UI de módulos/telas).
-  const [mapTileTheme, setMapTileTheme] = useState<'light' | 'dark'>(() => getBrasiliaAutoMapTheme());
+  // Tema dos tiles do modo 2D: por padrão automático pelo horário de Brasília
+  // (independente do ícone de tema manual das páginas), mas o operador pode
+  // sobrepor manualmente clicando no toggle claro/escuro/auto do mapa.
+  const [autoTileTheme, setAutoTileTheme] = useState<'light' | 'dark'>(() => getBrasiliaAutoMapTheme());
+  const [tileThemeOverride, setTileThemeOverride] = useState<'light' | 'dark' | null>(null);
   useEffect(() => {
     const interval = setInterval(() => {
-      setMapTileTheme(getBrasiliaAutoMapTheme());
+      setAutoTileTheme(getBrasiliaAutoMapTheme());
     }, 60000);
     return () => clearInterval(interval);
   }, []);
+  const mapTileTheme = tileThemeOverride ?? autoTileTheme;
+  const cycleTileTheme = () => {
+    setTileThemeOverride((prev) => (prev === null ? 'light' : prev === 'light' ? 'dark' : null));
+  };
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const baseTileLayerRef = useRef<L.TileLayer | null>(null);
@@ -430,7 +449,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     mapProvider.savePreferences({ mode: viewMode });
   }, [viewMode, mapTileTheme]);
 
-  // Planta baixa / imagem de referência do local sobreposta ao mapa
+  // Planta baixa / imagem de referência do local sobreposta ao mapa — arrastável
+  // (clique e segure para mover) e ajustável (roda do mouse sobre a imagem para
+  // redimensionar). Arraste manipula o overlay direto via setBounds() pra ficar
+  // fluido a 60fps e só avisa o estado do React (onFloorPlanCenterChange) ao
+  // soltar; a roda do mouse já é discreta o bastante pra ir direto pelo React.
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
@@ -440,14 +463,77 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       floorPlanLayerRef.current = null;
     }
 
-    if (floorPlanOverlay) {
-      const overlay = L.imageOverlay(floorPlanOverlay.url, floorPlanOverlay.bounds, {
-        opacity: floorPlanOverlay.opacity,
-        interactive: false,
-      }).addTo(map);
-      floorPlanLayerRef.current = overlay;
-    }
-  }, [floorPlanOverlay]);
+    if (!floorPlanOverlay) return;
+
+    const overlay = L.imageOverlay(floorPlanOverlay.url, floorPlanOverlay.bounds, {
+      opacity: floorPlanOverlay.opacity,
+      interactive: true,
+    }).addTo(map);
+    floorPlanLayerRef.current = overlay;
+
+    const el = overlay.getElement();
+    if (!el) return;
+
+    el.style.cursor = 'grab';
+    el.style.outline = '2px dashed rgba(6, 182, 212, 0.6)';
+    el.style.outlineOffset = '-2px';
+
+    let dragStart: L.LatLng | null = null;
+    let boundsAtDragStart: L.LatLngBounds | null = null;
+
+    const onDragMove = (e: L.LeafletMouseEvent) => {
+      if (!dragStart || !boundsAtDragStart) return;
+      const dLat = e.latlng.lat - dragStart.lat;
+      const dLng = e.latlng.lng - dragStart.lng;
+      const sw = boundsAtDragStart.getSouthWest();
+      const ne = boundsAtDragStart.getNorthEast();
+      overlay.setBounds(
+        L.latLngBounds([sw.lat + dLat, sw.lng + dLng], [ne.lat + dLat, ne.lng + dLng])
+      );
+    };
+
+    const onDragEnd = () => {
+      if (!dragStart) return;
+      map.dragging.enable();
+      el.style.cursor = 'grab';
+      map.off('mousemove', onDragMove);
+      map.off('mouseup', onDragEnd);
+      dragStart = null;
+      boundsAtDragStart = null;
+      const center = overlay.getBounds().getCenter();
+      onFloorPlanCenterChange?.(center.lat, center.lng);
+    };
+
+    const onDragStart = (e: L.LeafletMouseEvent) => {
+      dragStart = e.latlng;
+      boundsAtDragStart = overlay.getBounds();
+      map.dragging.disable();
+      el.style.cursor = 'grabbing';
+      map.on('mousemove', onDragMove);
+      map.on('mouseup', onDragEnd);
+    };
+
+    overlay.on('mousedown', onDragStart);
+
+    const onWheelResize = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const currentSize = floorPlanOverlay.sizeMeters ?? 250;
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      const nextSize = Math.min(2000, Math.max(20, Math.round(currentSize * factor)));
+      onFloorPlanSizeChange?.(nextSize);
+    };
+
+    L.DomEvent.disableScrollPropagation(el);
+    el.addEventListener('wheel', onWheelResize, { passive: false });
+
+    return () => {
+      overlay.off('mousedown', onDragStart);
+      map.off('mousemove', onDragMove);
+      map.off('mouseup', onDragEnd);
+      el.removeEventListener('wheel', onWheelResize);
+    };
+  }, [floorPlanOverlay, onFloorPlanCenterChange, onFloorPlanSizeChange]);
 
   // Captura de clique no mapa: ponto único (centro de cerca circular) ou vértices de polígono
   useEffect(() => {
@@ -1198,6 +1284,45 @@ export const AssetMap: React.FC<AssetMapProps> = ({
               </button>
             </div>
 
+            {viewMode === '2D' && (
+              <>
+                <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
+                <button
+                  onClick={cycleTileTheme}
+                  className={`relative w-8 h-8 rounded-xl border flex items-center justify-center overflow-hidden transition-all active:scale-90 ${
+                    tileThemeOverride === 'light'
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-500'
+                      : tileThemeOverride === 'dark'
+                      ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-400'
+                      : 'bg-slate-100 dark:bg-slate-950/90 border-slate-200 dark:border-slate-800 text-cyan-600 dark:text-cyan-400'
+                  }`}
+                  title={
+                    tileThemeOverride === 'light'
+                      ? 'Base do mapa: Claro (fixo) — clique para Escuro'
+                      : tileThemeOverride === 'dark'
+                      ? 'Base do mapa: Escuro (fixo) — clique para Automático'
+                      : `Base do mapa: Automático (${mapTileTheme === 'light' ? 'Claro' : 'Escuro'} agora, por horário de Brasília) — clique para Claro`
+                  }
+                >
+                  <Sun
+                    className={`absolute w-4 h-4 transition-all duration-300 ${
+                      tileThemeOverride === 'light' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-50'
+                    }`}
+                  />
+                  <Moon
+                    className={`absolute w-4 h-4 transition-all duration-300 ${
+                      tileThemeOverride === 'dark' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 rotate-90 scale-50'
+                    }`}
+                  />
+                  <SunMoon
+                    className={`absolute w-4 h-4 transition-all duration-300 ${
+                      tileThemeOverride === null ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 scale-50'
+                    }`}
+                  />
+                </button>
+              </>
+            )}
+
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
 
             {/* Extra Map Types Dropdown: Terreno / Ruas Padrão / Noturno / Trânsito */}
@@ -1718,7 +1843,9 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <span>Bateria</span>
                 </div>
                 <div className="text-lg font-bold text-emerald-400 font-mono mt-1">
-                  {activeDrawerAsset.telemetry.batteryLevel !== undefined
+                  {activeDrawerAsset.provider && activeDrawerAsset.telemetry.batteryLevelCategory
+                    ? BATTERY_LABEL[activeDrawerAsset.telemetry.batteryLevelCategory]
+                    : activeDrawerAsset.telemetry.batteryLevel !== undefined
                     ? `${activeDrawerAsset.telemetry.batteryLevel}%`
                     : 'N/A'}
                 </div>
@@ -1757,9 +1884,31 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Clock className="w-3.5 h-3.5 text-slate-400" /> Última Comunicação
                 </span>
                 <span className="font-mono text-slate-300">
-                  {activeDrawerAsset.telemetry.lastCommunication}
+                  {activeDrawerAsset.provider
+                    ? formatRelativeTimePtBr(activeDrawerAsset.telemetry.lastCommunication)
+                    : activeDrawerAsset.telemetry.lastCommunication}
                 </span>
               </div>
+
+              {activeDrawerAsset.provider && (
+                <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Satellite className="w-3.5 h-3.5 text-cyan-400" /> Origem da Posição
+                  </span>
+                  <span className="font-mono text-cyan-300 font-semibold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                    API {activeDrawerAsset.provider}
+                  </span>
+                </div>
+              )}
+
+              {activeDrawerAsset.provider && isTechnicalUser && activeDrawerAsset.mac && (
+                <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-slate-400" /> MAC (técnico)
+                  </span>
+                  <span className="font-mono text-slate-400 text-[11px]">{activeDrawerAsset.mac}</span>
+                </div>
+              )}
 
               {/* Position Source & GPS Accuracy */}
               <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">

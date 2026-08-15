@@ -23,7 +23,16 @@ import type {
   PointOfInterest,
   CompanyClient,
   CompanyUnit,
+  ProviderDevice,
+  ProviderHealth,
 } from '../types';
+import type {
+  HomologationRequest,
+  HomologationDevice,
+  HomologationEvent,
+  HomologationReport,
+} from '../types/homologation';
+import type { FieldRecoveryOccurrence, FieldRecoveryTimelineEvent } from '../types';
 
 type Row = Record<string, any>;
 type FieldMap = [string, string][];
@@ -66,6 +75,8 @@ const ASSET_FIELDS: FieldMap = [
   ['serviceExpireDate', 'service_expire_date'], ['lastRemoteCommand', 'last_remote_command'],
   ['offlineWhitelistSyncedAt', 'offline_whitelist_synced_at'],
   ['scheduledPhotoCapture', 'scheduled_photo_capture'],
+  ['alertConfig', 'alert_config'],
+  ['provider', 'provider'], ['providerDeviceId', 'provider_device_id'], ['mac', 'mac'],
 ];
 
 const TELEMETRY_FIELDS: FieldMap = [
@@ -83,6 +94,8 @@ const TELEMETRY_FIELDS: FieldMap = [
   ['fuelTanks', 'telemetry_fuel_tanks'], ['rpm', 'telemetry_rpm'],
   ['engineTemperature', 'telemetry_engine_temperature'],
   ['idlingMinutesToday', 'telemetry_idling_minutes_today'],
+  ['batteryRaw', 'telemetry_battery_raw'], ['batteryLevelCategory', 'telemetry_battery_level_category'],
+  ['providerPublishedAt', 'telemetry_provider_published_at'],
 ];
 
 export function rowToAsset(row: Row): AssetDevice {
@@ -325,6 +338,30 @@ const POI_FIELDS: FieldMap = [
 
 export const rowToPoi = (row: Row): PointOfInterest => ({ id: row.id, ...fromRow(row, POI_FIELDS) } as PointOfInterest);
 
+// ===================== Dispositivos de provedores externos (BRGPS) =====================
+// Leitura pelo app (painel de vinculação em TagsModule) + a única escrita
+// permitida ao frontend é a vinculação Device -> Asset (não toca no
+// fornecedor — isso é exclusividade do server/brgps-sync).
+
+const PROVIDER_DEVICE_FIELDS: FieldMap = [
+  ['provider', 'provider'], ['externalDeviceId', 'external_device_id'], ['mac', 'mac'],
+  ['isActived', 'is_actived'], ['status', 'status'], ['assetId', 'asset_id'],
+  ['discoveredAt', 'discovered_at'], ['lastSyncedAt', 'last_synced_at'],
+];
+
+export const rowToProviderDevice = (row: Row): ProviderDevice =>
+  ({ id: row.id, ...fromRow(row, PROVIDER_DEVICE_FIELDS) } as ProviderDevice);
+
+const PROVIDER_HEALTH_FIELDS: FieldMap = [
+  ['provider', 'provider'], ['status', 'status'], ['lastSuccessAt', 'last_success_at'],
+  ['lastErrorAt', 'last_error_at'], ['lastErrorMessage', 'last_error_message'],
+  ['requestsTotal', 'requests_total'], ['requestsFailed', 'requests_failed'],
+  ['rateLimitedTotal', 'rate_limited_total'], ['positionsReceivedTotal', 'positions_received_total'],
+  ['positionsDeduplicatedTotal', 'positions_deduplicated_total'], ['updatedAt', 'updated_at'],
+];
+
+export const rowToProviderHealth = (row: Row): ProviderHealth => fromRow(row, PROVIDER_HEALTH_FIELDS) as ProviderHealth;
+
 // ===================== Clientes & Unidades (lidos por AuthContext p/ os seletores) =====================
 
 const CLIENT_FIELDS: FieldMap = [
@@ -339,4 +376,150 @@ const UNIT_FIELDS: FieldMap = [
   ['address', 'address'], ['assetsCount', 'assets_count'], ['status', 'status'],
 ];
 
+// ===================== Homologação de Dispositivos (GT06) =====================
+
+const HOMOLOGATION_REQUEST_FIELDS: FieldMap = [
+  ['sessionToken', 'session_token'],
+  ['companyLegalName', 'company_legal_name'], ['companyTradeName', 'company_trade_name'],
+  ['technicalContactName', 'technical_contact_name'], ['technicalContactEmail', 'technical_contact_email'],
+  ['technicalContactPhone', 'technical_contact_phone'],
+  ['manufacturer', 'manufacturer'], ['model', 'model'], ['firmwareVersion', 'firmware_version'],
+  ['testImei', 'test_imei'], ['estimatedDeviceCount', 'estimated_device_count'],
+  ['protocol', 'protocol'], ['transport', 'transport'],
+  ['supportsDnsConfig', 'supports_dns_config'], ['supportsIpConfig', 'supports_ip_config'],
+  ['supportsPortConfig', 'supports_port_config'], ['supportsApnConfig', 'supports_apn_config'],
+  ['supportsTransmissionIntervalConfig', 'supports_transmission_interval_config'],
+  ['supportsHeartbeatConfig', 'supports_heartbeat_config'], ['supportsTimezoneConfig', 'supports_timezone_config'],
+  ['supportsPrimaryServerConfig', 'supports_primary_server_config'],
+  ['supportsSecondaryServerConfig', 'supports_secondary_server_config'],
+  ['manualUrl', 'manual_url'], ['protocolDocUrl', 'protocol_doc_url'],
+  ['commandTableUrl', 'command_table_url'], ['firmwareDocUrl', 'firmware_doc_url'],
+  ['payloadSampleText', 'payload_sample_text'], ['configDocUrl', 'config_doc_url'],
+  ['canTransmitToThirdPartyServer', 'can_transmit_to_third_party_server'],
+  ['supportsDnsResolution', 'supports_dns_resolution'], ['hasManufacturerApi', 'has_manufacturer_api'],
+  ['manufacturerApiType', 'manufacturer_api_type'], ['hasForwardingMirroring', 'has_forwarding_mirroring'],
+  ['forwardingDescription', 'forwarding_description'], ['status', 'status'],
+  ['adminNotes', 'admin_notes'], ['createdAt', 'created_at'],
+];
+
+export const rowToHomologationRequest = (row: Row): HomologationRequest =>
+  ({ id: row.id, ...fromRow(row, HOMOLOGATION_REQUEST_FIELDS) } as HomologationRequest);
+export const homologationRequestToInsertRow = (r: Omit<HomologationRequest, 'id' | 'sessionToken' | 'createdAt' | 'status'>): Row =>
+  toRow(r, HOMOLOGATION_REQUEST_FIELDS);
+export const homologationRequestUpdatesToRow = (updates: Partial<HomologationRequest>): Row =>
+  toRowPartial(updates, HOMOLOGATION_REQUEST_FIELDS);
+
+const HOMOLOGATION_DEVICE_FIELDS: FieldMap = [
+  ['requestId', 'request_id'], ['imei', 'imei'], ['manufacturer', 'manufacturer'], ['model', 'model'],
+  ['firmwareVersion', 'firmware_version'], ['demoMode', 'demo_mode'], ['createdAt', 'created_at'],
+];
+
+export const rowToHomologationDevice = (row: Row): HomologationDevice =>
+  ({ id: row.id, ...fromRow(row, HOMOLOGATION_DEVICE_FIELDS) } as HomologationDevice);
+export const homologationDeviceToInsertRow = (d: Omit<HomologationDevice, 'id' | 'createdAt'>): Row =>
+  toRow(d, HOMOLOGATION_DEVICE_FIELDS);
+
+const HOMOLOGATION_EVENT_FIELDS: FieldMap = [
+  ['requestId', 'request_id'], ['deviceId', 'device_id'], ['sessionToken', 'session_token'],
+  ['imeiMasked', 'imei_masked'], ['protocol', 'protocol'], ['packetType', 'packet_type'],
+  ['step', 'step'], ['status', 'status'], ['latencyMs', 'latency_ms'], ['createdAt', 'created_at'],
+];
+
+export const rowToHomologationEvent = (row: Row): HomologationEvent =>
+  ({ id: row.id, ...fromRow(row, HOMOLOGATION_EVENT_FIELDS) } as HomologationEvent);
+export const homologationEventToInsertRow = (e: Omit<HomologationEvent, 'id' | 'createdAt'>): Row =>
+  toRow(e, HOMOLOGATION_EVENT_FIELDS);
+
+const HOMOLOGATION_REPORT_FIELDS: FieldMap = [
+  ['requestId', 'request_id'], ['deviceId', 'device_id'], ['protocol', 'protocol'], ['transport', 'transport'],
+  ['dnsCompatible', 'dns_compatible'], ['connectionOk', 'connection_ok'], ['loginPacketOk', 'login_packet_ok'],
+  ['heartbeatOk', 'heartbeat_ok'], ['locationPacketOk', 'location_packet_ok'], ['result', 'result'],
+  ['createdAt', 'created_at'],
+];
+
+export const rowToHomologationReport = (row: Row): HomologationReport =>
+  ({ id: row.id, ...fromRow(row, HOMOLOGATION_REPORT_FIELDS) } as HomologationReport);
+export const homologationReportToInsertRow = (r: Omit<HomologationReport, 'id' | 'createdAt'>): Row =>
+  toRow(r, HOMOLOGATION_REPORT_FIELDS);
+
 export const rowToUnit = (row: Row): CompanyUnit => ({ id: row.id, ...fromRow(row, UNIT_FIELDS) } as CompanyUnit);
+
+// ===================== Recuperação de Campo (ATHOS Field) =====================
+// last_asset_lat/lng e collaborator_lat/lng são colunas planas no banco, mas viram
+// os objetos aninhados lastAssetPosition/collaboratorPosition no tipo do app — mesmo
+// padrão de TELEMETRY_FIELDS embutido em rowToAsset, só que tratado manualmente aqui
+// por não ser um bloco fixo reaproveitável em outra entidade.
+
+const RECOVERY_OCCURRENCE_FIELDS: FieldMap = [
+  ['assetId', 'asset_id'], ['assetName', 'asset_name'], ['assetCode', 'asset_code'],
+  ['category', 'category'], ['subcategory', 'subcategory'],
+  ['clientId', 'client_id'], ['unitId', 'unit_id'], ['unitName', 'unit_name'],
+  ['geofenceId', 'geofence_id'], ['geofenceName', 'geofence_name'],
+  ['status', 'status'], ['priority', 'priority'], ['exitDetectedAt', 'exit_detected_at'],
+  ['batteryLevel', 'battery_level'],
+  ['assignedUserId', 'assigned_user_id'], ['assignedUserName', 'assigned_user_name'], ['assignedAt', 'assigned_at'],
+  ['navigationMode', 'navigation_mode'],
+  ['locatedAt', 'located_at'], ['recoveredAt', 'recovered_at'],
+  ['recoveryNotes', 'recovery_notes'], ['recoveryPhotoDataUrl', 'recovery_photo_data_url'],
+  ['qrAssetConfirmed', 'qr_asset_confirmed'],
+  ['returnedToUnitAt', 'returned_to_unit_at'], ['autoResolvedAt', 'auto_resolved_at'],
+  ['notLocatedReason', 'not_located_reason'], ['cancelReason', 'cancel_reason'],
+  ['secureToken', 'secure_token'], ['tokenExpiresAt', 'token_expires_at'], ['tokenRevoked', 'token_revoked'],
+  ['isSimulated', 'is_simulated'], ['createdAt', 'created_at'],
+];
+
+export function rowToRecoveryOccurrence(row: Row, timeline: FieldRecoveryTimelineEvent[] = []): FieldRecoveryOccurrence {
+  return {
+    id: row.id,
+    ...fromRow(row, RECOVERY_OCCURRENCE_FIELDS),
+    lastAssetPosition: {
+      latitude: row.last_asset_lat,
+      longitude: row.last_asset_lng,
+      accuracyMeters: row.last_asset_accuracy_meters ?? undefined,
+      source: row.last_asset_source ?? undefined,
+      timestamp: row.last_asset_timestamp,
+    },
+    collaboratorPosition:
+      row.collaborator_lat != null
+        ? {
+            latitude: row.collaborator_lat,
+            longitude: row.collaborator_lng,
+            accuracyMeters: row.collaborator_accuracy_meters ?? undefined,
+            timestamp: row.collaborator_timestamp,
+          }
+        : undefined,
+    timeline,
+  } as FieldRecoveryOccurrence;
+}
+
+export function recoveryOccurrenceToInsertRow(
+  o: Omit<FieldRecoveryOccurrence, 'id' | 'createdAt' | 'timeline' | 'secureToken' | 'tokenExpiresAt' | 'tokenRevoked'>
+): Row {
+  return {
+    ...toRow(o, RECOVERY_OCCURRENCE_FIELDS),
+    last_asset_lat: o.lastAssetPosition.latitude,
+    last_asset_lng: o.lastAssetPosition.longitude,
+    last_asset_accuracy_meters: o.lastAssetPosition.accuracyMeters ?? null,
+    last_asset_source: o.lastAssetPosition.source ?? null,
+    last_asset_timestamp: o.lastAssetPosition.timestamp,
+  };
+}
+
+export function recoveryOccurrenceUpdatesToRow(updates: Partial<FieldRecoveryOccurrence>): Row {
+  const out = toRowPartial(updates, RECOVERY_OCCURRENCE_FIELDS);
+  if (updates.lastAssetPosition) {
+    out.last_asset_lat = updates.lastAssetPosition.latitude;
+    out.last_asset_lng = updates.lastAssetPosition.longitude;
+    out.last_asset_accuracy_meters = updates.lastAssetPosition.accuracyMeters ?? null;
+    out.last_asset_source = updates.lastAssetPosition.source ?? null;
+    out.last_asset_timestamp = updates.lastAssetPosition.timestamp;
+  }
+  return out;
+}
+
+const RECOVERY_TIMELINE_FIELDS: FieldMap = [
+  ['step', 'step'], ['userName', 'user_name'], ['note', 'note'], ['timestamp', 'created_at'],
+];
+
+export const rowToRecoveryTimelineEvent = (row: Row): FieldRecoveryTimelineEvent =>
+  ({ id: row.id, ...fromRow(row, RECOVERY_TIMELINE_FIELDS) } as FieldRecoveryTimelineEvent);

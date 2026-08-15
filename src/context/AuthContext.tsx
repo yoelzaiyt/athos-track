@@ -192,13 +192,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'CLIENT_ADMIN':
         return true; // accesses all modules for their client
       case 'FLEET_MANAGER':
-        return ['dashboard', 'map', 'frotas', 'cargas', 'alertas', 'relatorios'].includes(moduleKey);
+        return ['dashboard', 'map', 'frotas', 'cargas', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'CART_MANAGER':
-        return ['dashboard', 'map', 'carrinhos', 'tags', 'alertas', 'relatorios'].includes(moduleKey);
+        return ['dashboard', 'map', 'carrinhos', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'ASSET_MANAGER':
-        return ['dashboard', 'map', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios'].includes(moduleKey);
+        return ['dashboard', 'map', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'OPERATOR':
-        return ['dashboard', 'map', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas'].includes(moduleKey);
+        return ['dashboard', 'map', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas', 'recuperacao_campo'].includes(moduleKey);
       case 'VIEWER':
         return ['dashboard', 'map', 'relatorios'].includes(moduleKey);
       default:

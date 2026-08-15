@@ -19,6 +19,8 @@ import {
   AssetPairing,
   TrafficSegment,
   PointOfInterest,
+  ProviderDevice,
+  ProviderHealth,
 } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import {
@@ -37,6 +39,8 @@ import {
   rowToPairing, pairingToInsertRow, pairingUpdatesToRow,
   rowToTrafficSegment,
   rowToPoi,
+  rowToProviderDevice,
+  rowToProviderHealth,
 } from '../lib/mappers';
 
 interface AssetContextType {
@@ -55,6 +59,8 @@ interface AssetContextType {
   assetPairings: AssetPairing[];
   trafficSegments: TrafficSegment[];
   pois: PointOfInterest[];
+  providerDevices: ProviderDevice[];
+  providerHealth: ProviderHealth | null;
   isLoading: boolean;
   selectedAsset: AssetDevice | null;
   searchQuery: string;
@@ -103,6 +109,8 @@ interface AssetContextType {
   sendRemoteCommand: (assetId: string, command: string, label: string) => void;
   calibrateOdometer: (assetId: string, newOdometer: number) => void;
   pushOfflineWhitelist: (assetId: string) => void;
+  linkProviderDeviceToAsset: (providerDeviceId: string, assetId: string) => Promise<void>;
+  unlinkProviderDevice: (providerDeviceId: string, assetId: string) => Promise<void>;
   getFilteredAssets: (clientId?: string, unitId?: string) => AssetDevice[];
   getStats: (clientId?: string, unitId?: string) => {
     total: number;
@@ -138,6 +146,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [assetPairings, setAssetPairings] = useState<AssetPairing[]>([]);
   const [trafficSegments, setTrafficSegments] = useState<TrafficSegment[]>([]);
   const [pois, setPois] = useState<PointOfInterest[]>([]);
+  const [providerDevices, setProviderDevices] = useState<ProviderDevice[]>([]);
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -154,7 +164,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const [
         assetsRes, alertsRes, geofencesRes, shipmentsRes, driversRes, maintenanceRes,
         tripsRes, recoveriesRes, workOrdersRes, greylistRes, recoveryCasesRes,
-        routeTemplatesRes, pairingsRes, trafficRes, poisRes,
+        routeTemplatesRes, pairingsRes, trafficRes, poisRes, providerDevicesRes, providerHealthRes,
       ] = await Promise.all([
         supabase.from('assets').select('*').order('created_at', { ascending: false }),
         supabase.from('system_alerts').select('*').order('created_at', { ascending: false }),
@@ -171,6 +181,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('asset_pairings').select('*'),
         supabase.from('traffic_segments').select('*'),
         supabase.from('points_of_interest').select('*'),
+        supabase.from('provider_devices').select('*').order('discovered_at', { ascending: false }),
+        supabase.from('provider_health').select('*').eq('provider', 'BRGPS').maybeSingle(),
       ]);
 
       if (cancelled) return;
@@ -190,6 +202,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logError('assetPairings', pairingsRes.error);
       logError('trafficSegments', trafficRes.error);
       logError('pois', poisRes.error);
+      logError('providerDevices', providerDevicesRes.error);
+      logError('providerHealth', providerHealthRes.error);
 
       setAssets((assetsRes.data ?? []).map(rowToAsset));
       setAlerts((alertsRes.data ?? []).map(rowToAlert));
@@ -206,11 +220,36 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAssetPairings((pairingsRes.data ?? []).map(rowToPairing));
       setTrafficSegments((trafficRes.data ?? []).map(rowToTrafficSegment));
       setPois((poisRes.data ?? []).map(rowToPoi));
+      setProviderDevices((providerDevicesRes.data ?? []).map(rowToProviderDevice));
+      setProviderHealth(providerHealthRes.data ? rowToProviderHealth(providerHealthRes.data) : null);
       setIsLoading(false);
     })();
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Realtime (seção 30 do brief BRGPS): sem WebSocket customizado — assina
+  // mudanças via Supabase Realtime nas tabelas que o processo de sync
+  // (server/brgps-sync) grava com dados reais, e funde no estado já
+  // carregado. Ativos ainda simulados (provider null) não são afetados aqui,
+  // continuam só na simulação client-side abaixo.
+  useEffect(() => {
+    const assetsChannel = supabase
+      .channel('athos-assets-realtime')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
+        const updated = rowToAsset(payload.new as Record<string, unknown>);
+        setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'system_alerts' }, (payload) => {
+        const inserted = rowToAlert(payload.new as Record<string, unknown>);
+        setAlerts((prev) => [inserted, ...prev]);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(assetsChannel);
     };
   }, []);
 
@@ -223,6 +262,13 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const interval = setInterval(() => {
       setAssets((prevAssets) =>
         prevAssets.map((asset) => {
+          // Ativos com telemetria real de um provider externo (BRGPS) nunca
+          // são simulados — a posição/bateria/status vêm do processo de sync
+          // real e chegam via Realtime (efeito acima), não daqui.
+          if (asset.provider) {
+            return asset;
+          }
+
           // Fixed assets do not move
           if (asset.category === 'asset' || asset.category === 'tag') {
             return {
@@ -664,6 +710,60 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
+  // Vinculação Device (BRGPS) -> Asset. Não toca no fornecedor (isso é
+  // exclusividade do processo server/brgps-sync, que tem o api_token) — é só
+  // uma escrita normal no Supabase, igual a qualquer outro mutator deste
+  // contexto (seção 12 do brief: nunca criar Asset automaticamente, só ligar
+  // manualmente um dispositivo já descoberto a um asset já existente).
+  const linkProviderDeviceToAsset = async (providerDeviceId: string, assetId: string) => {
+    const device = providerDevices.find((d) => d.id === providerDeviceId);
+    if (!device) return;
+
+    const { error: deviceError } = await supabase
+      .from('provider_devices')
+      .update({ asset_id: assetId, status: 'ASSIGNED' })
+      .eq('id', providerDeviceId);
+    logError('linkProviderDeviceToAsset (provider_devices)', deviceError);
+    if (deviceError) return;
+
+    const { error: assetError } = await supabase
+      .from('assets')
+      .update({ provider: device.provider, provider_device_id: providerDeviceId, mac: device.mac ?? null })
+      .eq('id', assetId);
+    logError('linkProviderDeviceToAsset (assets)', assetError);
+    if (assetError) return;
+
+    setProviderDevices((prev) =>
+      prev.map((d) => (d.id === providerDeviceId ? { ...d, assetId, status: 'ASSIGNED' } : d))
+    );
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, provider: device.provider, providerDeviceId, mac: device.mac } : a))
+    );
+  };
+
+  const unlinkProviderDevice = async (providerDeviceId: string, assetId: string) => {
+    const { error: deviceError } = await supabase
+      .from('provider_devices')
+      .update({ asset_id: null, status: 'UNASSIGNED' })
+      .eq('id', providerDeviceId);
+    logError('unlinkProviderDevice (provider_devices)', deviceError);
+    if (deviceError) return;
+
+    const { error: assetError } = await supabase
+      .from('assets')
+      .update({ provider: null, provider_device_id: null })
+      .eq('id', assetId);
+    logError('unlinkProviderDevice (assets)', assetError);
+    if (assetError) return;
+
+    setProviderDevices((prev) =>
+      prev.map((d) => (d.id === providerDeviceId ? { ...d, assetId: undefined, status: 'UNASSIGNED' } : d))
+    );
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, provider: undefined, providerDeviceId: undefined } : a))
+    );
+  };
+
   const getFilteredAssets = (clientId = 'all', unitId = 'all'): AssetDevice[] => {
     return assets.filter((asset) => {
       if (clientId !== 'all' && asset.clientId !== clientId) return false;
@@ -729,6 +829,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         assetPairings,
         trafficSegments,
         pois,
+        providerDevices,
+        providerHealth,
         isLoading,
         selectedAsset,
         searchQuery,
@@ -777,6 +879,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         sendRemoteCommand,
         calibrateOdometer,
         pushOfflineWhitelist,
+        linkProviderDeviceToAsset,
+        unlinkProviderDevice,
         getFilteredAssets,
         getStats,
       }}

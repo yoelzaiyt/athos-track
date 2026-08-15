@@ -25,6 +25,8 @@ import {
   Sparkles,
   Wrench,
   ShieldAlert,
+  Radio,
+  Navigation,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -62,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
     { key: 'bicicletas', label: 'Bicicletas', icon: Bike },
     { key: 'tags', label: 'Tags & Dispositivos', icon: Tag },
     { key: 'agro', label: 'Agro', icon: Sprout },
+    { key: 'recuperacao_campo', label: 'Central de Recuperação de Campo', icon: Navigation },
   ];
 
   const adminItems: NavItem[] = [
@@ -71,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
     { key: 'cercas', label: 'Cercas Virtuais', icon: Layers },
     { key: 'ordens_servico', label: 'Ordens de Serviço', icon: Wrench },
     { key: 'recuperacao_ativos', label: 'Recuperação de Ativos', icon: ShieldAlert },
+    { key: 'homologacao_gt06', label: 'Homologação GT06', icon: Radio },
     { key: 'permissoes', label: 'Grupos & Permissões', icon: ShieldCheck },
     { key: 'integracoes', label: 'Integrações & API', icon: Globe },
     { key: 'configuracoes', label: 'Configurações', icon: Settings },
@@ -148,10 +152,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
         iconActive: 'text-indigo-600 dark:text-indigo-400',
         iconHover: 'group-hover:text-indigo-500',
       },
+      recuperacao_campo: {
+        active: 'bg-orange-500/15 text-orange-600 dark:text-orange-300 border-orange-500/30 shadow-sm font-bold',
+        iconActive: 'text-orange-600 dark:text-orange-400',
+        iconHover: 'group-hover:text-orange-500',
+      },
       recuperacao_ativos: {
         active: 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30 shadow-sm font-bold',
         iconActive: 'text-rose-600 dark:text-rose-400',
         iconHover: 'group-hover:text-rose-500',
+      },
+      homologacao_gt06: {
+        active: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30 shadow-sm font-bold',
+        iconActive: 'text-amber-600 dark:text-amber-400',
+        iconHover: 'group-hover:text-amber-500',
       },
     };
 

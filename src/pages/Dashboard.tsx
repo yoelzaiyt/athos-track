@@ -38,11 +38,10 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { selectedClientId, selectedUnitId, theme } = useAuth();
-  const { getStats, getFilteredAssets, alerts, setSelectedAsset } = useAssets();
+  const { getStats } = useAssets();
   const [hoveredStatusIndex, setHoveredStatusIndex] = useState<number | null>(null);
 
   const stats = getStats(selectedClientId, selectedUnitId);
-  const scopedAssets = getFilteredAssets(selectedClientId, selectedUnitId);
   const gridStroke = theme === 'light' ? '#e2e8f0' : '#1e293b';
   const tooltipStyle = {
     backgroundColor: theme === 'light' ? 'rgba(255,255,255,0.98)' : 'rgba(15, 23, 42, 0.95)',
@@ -69,10 +68,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     { hora: '12:00', cercas: 19, alertas: 1, pings: 650 },
     { hora: '13:00', cercas: 52, alertas: 6, pings: 980 },
   ];
-
-  const lowBatteryAssets = scopedAssets.filter(
-    (a) => a.telemetry.batteryLevel < 25 || a.status === 'low_battery'
-  );
 
   return (
     <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
@@ -170,25 +165,78 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         />
       </div>
 
-      {/* Main Grid: Live Map & Analytics Charts */}
+      {/* Mapa Consolidado — largura total, ampliado para melhor visibilidade do operador.
+          "Alertas Recentes" foi incorporado à Central de Alertas e Notificações de
+          Segurança (AlertsPage), que já tem os mesmos dados com filtro, busca e
+          reconhecimento — sem necessidade de um preview duplicado aqui. */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+            <Layers className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+            <span>Mapa Consolidado de Dispositivos</span>
+          </h3>
+          <button
+            onClick={() => onNavigate('mapa')}
+            className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-medium"
+          >
+            <span>Ver Detalhes</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="flex-1 min-h-[600px]">
+          <LiveMap heightClass="h-[600px]" />
+        </div>
+      </div>
+
+      {/* Bottom Grid: Events Chart & Device Status Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Resumed Map (2 cols) */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-              <span>Mapa Consolidado de Dispositivos</span>
-            </h3>
-            <button
-              onClick={() => onNavigate('mapa')}
-              className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-medium"
-            >
-              <span>Ver Detalhes</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+        {/* Events Bar Chart */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                <span>Volume de Eventos por Hora</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Cercas cruzadas, alertas e pings de telemetria registrados hoje
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-h-[380px]">
-            <LiveMap heightClass="h-[380px]" />
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={eventsTimelineData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                <XAxis dataKey="hora" stroke="#94a3b8" fontSize={11} />
+                <YAxis
+                  yAxisId="left"
+                  stroke="#94a3b8"
+                  fontSize={11}
+                  label={{ value: 'Cercas / Alertas', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#a855f7"
+                  fontSize={11}
+                  label={{ value: 'Pings', angle: 90, position: 'insideRight', fontSize: 10, fill: '#a855f7' }}
+                />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: '11px' }} />
+                <Bar yAxisId="left" dataKey="cercas" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Cercas Cruzadas" />
+                <Bar yAxisId="left" dataKey="alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="pings"
+                  stroke="#a855f7"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: '#a855f7' }}
+                  activeDot={{ r: 5 }}
+                  name="Pings de Telemetria"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
@@ -261,145 +309,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <strong className="text-slate-900 dark:text-slate-200 font-mono">{st.value}</strong>
               </button>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Grid: Events Chart, Recent Alarms, Low Battery Assets */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Events Bar Chart */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                <span>Volume de Eventos por Hora</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Cercas cruzadas, alertas e pings de telemetria registrados hoje
-              </p>
-            </div>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={eventsTimelineData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-                <XAxis dataKey="hora" stroke="#94a3b8" fontSize={11} />
-                <YAxis
-                  yAxisId="left"
-                  stroke="#94a3b8"
-                  fontSize={11}
-                  label={{ value: 'Cercas / Alertas', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#a855f7"
-                  fontSize={11}
-                  label={{ value: 'Pings', angle: 90, position: 'insideRight', fontSize: 10, fill: '#a855f7' }}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar yAxisId="left" dataKey="cercas" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Cercas Cruzadas" />
-                <Bar yAxisId="left" dataKey="alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="pings"
-                  stroke="#a855f7"
-                  strokeWidth={2}
-                  dot={{ r: 3, fill: '#a855f7' }}
-                  activeDot={{ r: 5 }}
-                  name="Pings de Telemetria"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Recent Alarms List */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                <span>Alertas Recentes</span>
-              </h3>
-              <button
-                onClick={() => onNavigate('alertas')}
-                className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline font-medium"
-              >
-                Ver Todos
-              </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {alerts.slice(0, 3).map((alt) => (
-                <div
-                  key={alt.id}
-                  onClick={() => onNavigate('alertas')}
-                  className="p-3 bg-slate-50 dark:bg-slate-950/80 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-800/80 text-xs flex items-start justify-between gap-2 cursor-pointer transition-colors"
-                >
-                  <div>
-                    <div className="font-semibold text-slate-900 dark:text-slate-200">{alt.title}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{alt.assetName}</div>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded ${
-                      alt.severity === 'critical'
-                        ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                    }`}
-                  >
-                    {alt.severity}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Low Battery Devices Warning List */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
-                <BatteryLow className="w-4 h-4 text-rose-500 dark:text-rose-400" />
-                <span>Bateria Baixa (&lt; 25%)</span>
-              </h3>
-              <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded">
-                {lowBatteryAssets.length} Dispositivos
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {lowBatteryAssets.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs">
-                  Nenhum dispositivo com bateria baixa.
-                </div>
-              ) : (
-                lowBatteryAssets.map((asset) => (
-                  <div
-                    key={asset.id}
-                    onClick={() => {
-                      setSelectedAsset(asset);
-                      onNavigate('mapa');
-                    }}
-                    className="p-2.5 bg-slate-50 dark:bg-slate-950/80 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between cursor-pointer transition-colors"
-                  >
-                    <div>
-                      <div className="font-medium text-slate-900 dark:text-slate-200">{asset.name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{asset.code} • {asset.unitName}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-bold font-mono text-rose-600 dark:text-rose-400">
-                        {asset.telemetry.batteryLevel}%
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         </div>
       </div>

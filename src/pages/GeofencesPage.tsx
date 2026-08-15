@@ -12,6 +12,7 @@ import {
   X,
   SlidersHorizontal,
   ShieldAlert,
+  Move,
 } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
@@ -270,9 +271,10 @@ export const GeofencesPage: React.FC = () => {
                   />
                 </div>
 
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                  A planta é centralizada no ponto marcado no mapa (ou no centro padrão). Marque o centro da cerca para
-                  reposicionar a planta sobre o local real.
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-start gap-1">
+                  <Move className="w-3 h-3 mt-0.5 shrink-0 text-cyan-500" />
+                  Arraste a planta direto no mapa pra reposicionar, e use a roda do mouse sobre ela pra ajustar o tamanho.
+                  Os controles acima seguem em tempo real.
                 </p>
               </div>
             )}
@@ -293,9 +295,11 @@ export const GeofencesPage: React.FC = () => {
             onPolygonPointAdded={(lat, lng) => setPolygonDraftPoints((prev) => [...prev, [lat, lng]])}
             floorPlanOverlay={
               floorPlanUrl && floorPlanBounds
-                ? { url: floorPlanUrl, bounds: floorPlanBounds, opacity: floorPlanOpacity }
+                ? { url: floorPlanUrl, bounds: floorPlanBounds, opacity: floorPlanOpacity, sizeMeters: floorPlanSizeMeters }
                 : null
             }
+            onFloorPlanCenterChange={(lat, lng) => setPickedCenter([lat, lng])}
+            onFloorPlanSizeChange={setFloorPlanSizeMeters}
           />
         </div>
       </div>

@@ -2,6 +2,11 @@ export type ThemeMode = 'light' | 'dark';
 export type MapViewMode = '2D' | 'SATELLITE' | 'HYBRID' | 'STREETS' | 'TERRAIN' | 'NIGHT' | 'TRAFFIC';
 export type PositionSource = 'GPS' | 'GPS Satellite' | 'LBS' | 'Wi-Fi' | 'BLE Gateway' | 'Manual';
 
+// Nível de bateria cru de provedores externos que só informam uma faixa
+// (ex.: BRGPS: -1..3), não uma porcentagem real — nunca converter isso em
+// "75%" fictício no frontend. Ver docs/integrations/BRGPS.md.
+export type BatteryLevelCategory = 'UNKNOWN' | 'CRITICAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+
 export type UserRole =
   | 'ATHOS_ADMIN'
   | 'CLIENT_ADMIN'
@@ -118,6 +123,11 @@ export interface TelemetryData {
   rpm?: number;
   engineTemperature?: number; // ECT em °C
   idlingMinutesToday?: number;
+  // Telemetria vinda de provedor externo (BRGPS hoje) que só informa nível
+  // cru de bateria (-1..3), não porcentagem real — ver BatteryLevelCategory.
+  batteryRaw?: number;
+  batteryLevelCategory?: BatteryLevelCategory;
+  providerPublishedAt?: string; // publishTime do fornecedor, distinto de packetTimestamp
 }
 
 export type TireStatus = 'normal' | 'low_pressure' | 'high_pressure' | 'fault';
@@ -213,6 +223,72 @@ export interface AssetDevice {
     fromTime: string;
     toTime: string;
   };
+  // Atalhos de alertas/notificações por dispositivo (inspirado no painel de
+  // configuração de rastreadores GT06 white-label — ver EndpointCard/homologação)
+  alertConfig?: AlertConfig;
+  // Provider externo real (ex.: 'BRGPS') que alimenta a telemetria deste
+  // ativo — undefined/null significa que ainda é simulação client-side.
+  // Nomes de domínio ficam neutros de provedor (seção 44 do brief de
+  // integração): trocar o provider no futuro não deve exigir mudança de tipo.
+  provider?: string;
+  providerDeviceId?: string;
+  // MAC do dispositivo — seção 32: não exibir cheio no frontend padrão, só
+  // para usuários técnicos autorizados.
+  mac?: string;
+}
+
+// ===================== Dispositivos de provedores externos (BRGPS etc.) =====================
+// Um dispositivo aparece aqui assim que descoberto no fornecedor (GET /tag/all),
+// como UNASSIGNED. Vinculação a um Asset é manual, feita por um admin — nunca
+// automática (seção 12 do brief de integração BRGPS).
+
+export type ProviderDeviceStatus = 'UNASSIGNED' | 'ASSIGNED';
+
+export interface ProviderDevice {
+  id: string;
+  provider: string;
+  externalDeviceId: string;
+  mac?: string;
+  isActived: boolean;
+  status: ProviderDeviceStatus;
+  assetId?: string;
+  discoveredAt: string;
+  lastSyncedAt?: string;
+}
+
+export type ProviderHealthStatus = 'HEALTHY' | 'DEGRADED' | 'UNAVAILABLE';
+
+export interface ProviderHealth {
+  provider: string;
+  status: ProviderHealthStatus;
+  lastSuccessAt?: string;
+  lastErrorAt?: string;
+  lastErrorMessage?: string;
+  requestsTotal: number;
+  requestsFailed: number;
+  rateLimitedTotal: number;
+  positionsReceivedTotal: number;
+  positionsDeduplicatedTotal: number;
+  updatedAt: string;
+}
+
+export interface AlertConfig {
+  transmissionIntervalSeconds: number;
+  alertPhoneNumber: string;
+  speedAlertEnabled: boolean;
+  smsEmailNotificationsEnabled: boolean;
+  ignitionAlertEnabled: boolean;
+  routeDeviationAlertEnabled: boolean;
+  parkingAlertEnabled: boolean;
+  temperatureAlertEnabled: boolean;
+  temperatureThresholdC: number;
+  idleAlertEnabled: boolean;
+  idleThresholdMinutes: number;
+  movingAlarmEnabled: boolean;
+  fuelAlertEnabled: boolean;
+  fatigueAlertEnabled: boolean;
+  serviceNotificationsEnabled: boolean;
+  platformAlarmEnabled: boolean;
 }
 
 export type DriverStatus = 'active' | 'inactive' | 'suspended';
@@ -540,6 +616,97 @@ export interface AssetRecoveryCase {
   lastKnownLongitude?: number;
   frequentStopPoints: FrequentStopPoint[];
   notes?: string;
+}
+
+// ===================== Recuperação de Campo (ATHOS Field) =====================
+// Distinto de AssetRecoveryCase (cobrança/inadimplência/penhora, módulo "recuperacao_ativos")
+// e de CartRecovery (registro simples de "recuperado", foto+assinatura, sem estados
+// intermediários) — isto é o ciclo de vida completo "ativo saiu da cerca virtual →
+// colaborador de campo vai buscar", com estados intermediários e missão no ATHOS Field PWA.
+
+export type FieldRecoveryStatus =
+  | 'detectado'
+  | 'aguardando_atendimento'
+  | 'atribuido'
+  | 'em_deslocamento'
+  | 'proximo_ao_ativo'
+  | 'localizado'
+  | 'recuperado'
+  | 'nao_localizado'
+  | 'cancelado';
+
+export type FieldRecoveryPriority = 'baixa' | 'normal' | 'alta' | 'critica';
+
+export type FieldRecoveryTimelineStep =
+  | 'exit_detectado'
+  | 'alerta_criado'
+  | 'ocorrencia_criada'
+  | 'atribuido'
+  | 'busca_iniciada'
+  | 'rota_iniciada'
+  | 'ativo_atualizado'
+  | 'colaborador_chegou'
+  | 'ativo_localizado'
+  | 'qr_confirmado'
+  | 'recuperado'
+  | 'retornou_unidade'
+  | 'nao_localizado'
+  | 'ocorrencia_encerrada';
+
+export interface FieldRecoveryTimelineEvent {
+  id: string;
+  step: FieldRecoveryTimelineStep;
+  timestamp: string;
+  userName?: string;
+  note?: string;
+}
+
+export interface FieldRecoveryPosition {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  source?: PositionSource;
+  timestamp: string;
+}
+
+export interface FieldRecoveryOccurrence {
+  id: string;
+  assetId: string;
+  assetName: string;
+  assetCode: string;
+  category: AssetCategory;
+  subcategory?: AssetSubcategory;
+  clientId: string;
+  unitId: string;
+  unitName: string;
+  geofenceId?: string;
+  geofenceName?: string;
+  status: FieldRecoveryStatus;
+  priority: FieldRecoveryPriority;
+  exitDetectedAt: string;
+  lastAssetPosition: FieldRecoveryPosition;
+  batteryLevel?: number;
+  assignedUserId?: string;
+  assignedUserName?: string;
+  assignedAt?: string;
+  collaboratorPosition?: FieldRecoveryPosition;
+  navigationMode?: 'walking' | 'driving' | 'cycling';
+  locatedAt?: string;
+  recoveredAt?: string;
+  recoveryNotes?: string;
+  recoveryPhotoDataUrl?: string;
+  qrAssetConfirmed?: boolean;
+  returnedToUnitAt?: string;
+  autoResolvedAt?: string;
+  notLocatedReason?: string;
+  cancelReason?: string;
+  secureToken: string;
+  tokenExpiresAt: string;
+  tokenRevoked?: boolean;
+  timeline: FieldRecoveryTimelineEvent[];
+  createdAt: string;
+  /** Protótipo: marca dados simulados de demonstração — nunca exibir como "Ao Vivo". */
+  isSimulated?: boolean;
 }
 
 // ===================== Pareamento & Alerta de Proximidade (comboio/escolta) =====================

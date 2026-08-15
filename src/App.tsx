@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider } from './context/AssetContext';
 import { Header } from './components/layout/Header';
@@ -25,6 +26,8 @@ import { UnitsPage } from './pages/admin/UnitsPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { IntegrationsPage } from './pages/admin/IntegrationsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
+import { HomologationAdminPage } from './pages/admin/HomologationAdminPage';
+import { HomologationPortalPage } from './pages/public/HomologationPortalPage';
 
 const AuthenticatedShell: React.FC = () => {
   const [currentModule, setCurrentModule] = useState<string>('dashboard');
@@ -75,6 +78,8 @@ const AuthenticatedShell: React.FC = () => {
         return <IntegrationsPage />;
       case 'configuracoes':
         return <SettingsPage />;
+      case 'homologacao_gt06':
+        return <HomologationAdminPage />;
       default:
         return <Dashboard onNavigate={(m) => setCurrentModule(m)} />;
     }
@@ -120,8 +125,17 @@ const AppGate: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppGate />
-    </AuthProvider>
+    <Routes>
+      {/* Rota pública: sem AuthProvider/gate — fornecedores homologam sem login. */}
+      <Route path="/homologacao/*" element={<HomologationPortalPage />} />
+      <Route
+        path="*"
+        element={
+          <AuthProvider>
+            <AppGate />
+          </AuthProvider>
+        }
+      />
+    </Routes>
   );
 }

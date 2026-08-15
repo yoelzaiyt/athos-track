@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tag, Cpu, Radio, Wifi, CheckCircle2, Plus, Pencil, Trash2, Map as MapIcon } from 'lucide-react';
+import { Tag, Cpu, Radio, Wifi, CheckCircle2, Plus, Pencil, Trash2, Map as MapIcon, Satellite, Link2 } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { DataTable, Column } from '../components/common/DataTable';
 import { DeviceFormModal } from '../components/common/DeviceFormModal';
@@ -7,6 +7,88 @@ import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
+
+const PROVIDER_HEALTH_LABEL: Record<string, { label: string; className: string }> = {
+  HEALTHY: { label: 'Operante', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+  DEGRADED: { label: 'Degradado', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+  UNAVAILABLE: { label: 'Indisponível', className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' },
+};
+
+const UnassignedBrgpsDevicesPanel: React.FC = () => {
+  const { providerDevices, providerHealth, assets, linkProviderDeviceToAsset } = useAssets();
+  const [selectedAssetByDevice, setSelectedAssetByDevice] = useState<Record<string, string>>({});
+
+  const unassigned = providerDevices.filter((d) => d.provider === 'BRGPS' && d.status === 'UNASSIGNED');
+  const linkableAssets = assets.filter((a) => !a.provider);
+
+  if (unassigned.length === 0 && !providerHealth) return null;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3 transition-colors">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">
+          <Satellite className="w-4 h-4" />
+          <span>Dispositivos BRGPS Descobertos (Provider Real)</span>
+        </div>
+        {providerHealth && (
+          <span
+            className={`px-2.5 py-1 text-[10px] font-bold font-mono rounded-full uppercase border ${PROVIDER_HEALTH_LABEL[providerHealth.status]?.className}`}
+          >
+            Provider BRGPS: {PROVIDER_HEALTH_LABEL[providerHealth.status]?.label ?? providerHealth.status}
+          </span>
+        )}
+      </div>
+
+      {unassigned.length === 0 ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Nenhum dispositivo BRGPS aguardando vinculação. Rode <code className="font-mono">npm run brgps:discover</code> para buscar novos.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {unassigned.map((device) => (
+            <div
+              key={device.id}
+              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
+                  ID Externo: {device.externalDeviceId}
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {device.isActived ? 'Ativado no fornecedor' : 'Não ativado no fornecedor'} · Descoberto em {new Date(device.discoveredAt).toLocaleString('pt-BR')}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+                  value={selectedAssetByDevice[device.id] ?? ''}
+                  onChange={(e) => setSelectedAssetByDevice((prev) => ({ ...prev, [device.id]: e.target.value }))}
+                >
+                  <option value="">Selecione um ativo…</option>
+                  {linkableAssets.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.code} — {a.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  disabled={!selectedAssetByDevice[device.id]}
+                  onClick={() => {
+                    const assetId = selectedAssetByDevice[device.id];
+                    if (assetId) linkProviderDeviceToAsset(device.id, assetId);
+                  }}
+                  className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[11px] font-semibold rounded-lg flex items-center gap-1 shrink-0"
+                >
+                  <Link2 className="w-3 h-3" /> Vincular
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const TagsModule: React.FC = () => {
   const { selectedClientId, selectedUnitId } = useAuth();
@@ -190,6 +272,8 @@ export const TagsModule: React.FC = () => {
         <StatCard title="Protocolo GT06 GPS" value={gt06Count} icon={Radio} variant="amber" />
         <StatCard title="Gateways BLE" value={bleCount} icon={Wifi} variant="indigo" />
       </div>
+
+      <UnassignedBrgpsDevicesPanel />
 
       <DataTable
         title="Dispositivos e Protocolos Configurados"

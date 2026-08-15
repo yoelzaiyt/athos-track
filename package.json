@@ -8,7 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "gt06:listen": "tsx server/gt06-listener/index.ts",
+    "brgps:discover": "tsx server/brgps-sync/index.ts discover",
+    "brgps:activate": "tsx server/brgps-sync/index.ts activate",
+    "brgps:sync-once": "tsx server/brgps-sync/index.ts sync-once",
+    "brgps:sync": "tsx server/brgps-sync/index.ts sync",
+    "brgps:history": "tsx server/brgps-sync/index.ts history",
+    "brgps:test": "tsx server/brgps-sync/index.ts test"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -21,8 +29,10 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-router-dom": "^7.18.2",
     "recharts": "^3.10.1",
     "vite": "^6.2.3"
   },
@@ -31,12 +41,14 @@
     "@types/leaflet": "^1.9.22",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.21.0",
+    "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "pg": "^8.23.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
+    "vitest": "^3.2.4",
     "vite": "^6.2.3"
   }
 }

@@ -1,1 +1,159 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Scrollbar fina reutilizável em qualquer painel com rolagem interna
+   (ex.: DataTable) — mesma ideia aplicável em qualquer módulo do app. */
+.athos-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+
+.athos-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.athos-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.athos-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.5);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.athos-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(6 182 212 / 0.6);
+}
+
+.dark .athos-scroll {
+  scrollbar-color: rgb(71 85 105 / 0.7) transparent;
+}
+
+.dark .athos-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 0.7);
+}
+
+.dark .athos-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(34 211 238 / 0.6);
+}
+
+/* ===================== Portal de Homologação GT06 (/homologacao) =====================
+   Tema escuro/dourado escoposado a esta seção — não afeta a paleta cyan/amber
+   do app interno autenticado. Tokens usados via var(--h-*) nos componentes de
+   src/components/homologation e src/pages/public/HomologationPortalPage.tsx. */
+.athos-homologation-theme {
+  --h-onyx: #0b0d10;
+  --h-onyx-raised: #14171c;
+  --h-line: #23272e;
+  --h-gold: #c9a227;
+  --h-gold-bright: #e8c766;
+  --h-white: #f5f3ee;
+  --h-mute: #8b909a;
+  --h-success: #4ade80;
+  --h-error: #f87171;
+
+  background: var(--h-onyx);
+  color: var(--h-white);
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+.athos-homologation-theme .h-mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+@keyframes h-trace-pulse {
+  0% { stroke-dashoffset: 240; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.35; }
+}
+
+.athos-homologation-theme .h-trace-line {
+  stroke-dasharray: 240;
+  animation: h-trace-pulse 1.6s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .athos-homologation-theme .h-trace-line {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 0.35;
+  }
+}
+
+/* ===================== Tela de Login (/) ===================== */
+@keyframes login-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-card-enter {
+  animation: login-card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes login-stagger-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-stagger > * {
+  animation: login-stagger-in 0.5s ease-out both;
+}
+
+@keyframes btn-shine {
+  from { transform: translateX(-130%) skewX(-20deg); }
+  to { transform: translateX(230%) skewX(-20deg); }
+}
+
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.35) 45%, transparent 65%);
+  transform: translateX(-130%) skewX(-20deg);
+}
+
+.btn-shine:hover::after {
+  animation: btn-shine 1s ease;
+}
+
+/* Anel giratório multicolor ao redor do card de login — "farol de sinal" */
+@keyframes login-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+.login-ring-spin {
+  animation: login-ring-spin 7s linear infinite;
+}
+
+/* Satélite orbitando: anel externo gira, ícone interno gira ao contrário na
+   mesma duração pra ficar sempre "de pé" em vez de tombar junto. */
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbit-counter-spin {
+  to { transform: rotate(-360deg); }
+}
+
+.orbit-spin {
+  animation: orbit-spin 10s linear infinite;
+}
+
+.orbit-counter-spin {
+  animation: orbit-counter-spin 10s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card-enter,
+  .login-stagger > *,
+  .btn-shine:hover::after,
+  .login-ring-spin,
+  .orbit-spin,
+  .orbit-counter-spin {
+    animation: none;
+  }
+}

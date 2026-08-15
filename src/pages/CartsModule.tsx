@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingCart, AlertCircle, BatteryLow, ShieldAlert, Wrench, Radio, MapPin, CheckCircle2, Map as MapIcon, ShieldCheck, Camera } from 'lucide-react';
+import { ShoppingCart, BatteryLow, ShieldAlert, Wrench, Radio, MapPin, CheckCircle2, Map as MapIcon, ShieldCheck, Camera, Satellite } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { DataTable, Column } from '../components/common/DataTable';
 import { LiveMap } from '../components/map/LiveMap';
@@ -8,6 +8,15 @@ import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
 import { AssetIcon } from '../components/common/AssetIconRegistry';
+import { formatRelativeTimePtBr } from '../lib/format';
+
+const BATTERY_LABEL: Record<string, string> = {
+  UNKNOWN: 'Desconhecida',
+  CRITICAL: 'Crítica',
+  LOW: 'Baixa',
+  MEDIUM: 'Média',
+  HIGH: 'Alta',
+};
 
 export const CartsModule: React.FC = () => {
   const { selectedClientId, selectedUnitId, user } = useAuth();
@@ -20,13 +29,16 @@ export const CartsModule: React.FC = () => {
   const cartAssetIds = new Set(cartAssets.map((c) => c.id));
   const cartRecoveries = recoveries.filter((r) => cartAssetIds.has(r.assetId));
 
-  // Realism supermarket numbers
-  const totalCartsSimulated = 250;
-  const insideUnit = 242;
-  const outsideUnit = 3;
-  const noComm = 5;
-  const lowBat = 10;
-  const maintenance = 8;
+  // KPIs calculados a partir dos carrinhos reais filtrados (não mais números
+  // fixos de demonstração) — seção 22 do brief de integração BRGPS.
+  const totalCarts = cartAssets.length;
+  const insideUnit = cartAssets.filter((c) => c.status !== 'out_of_geofence').length;
+  const outsideUnit = cartAssets.filter((c) => c.status === 'out_of_geofence').length;
+  const noComm = cartAssets.filter((c) => c.status === 'offline').length;
+  const lowBat = cartAssets.filter(
+    (c) => c.telemetry.batteryLevelCategory === 'CRITICAL' || c.telemetry.batteryLevelCategory === 'LOW' || (c.telemetry.batteryLevel ?? 100) < 20
+  ).length;
+  const maintenance = cartAssets.filter((c) => c.status === 'maintenance').length;
 
   const columns: Column<AssetDevice>[] = [
     {
@@ -75,28 +87,49 @@ export const CartsModule: React.FC = () => {
     },
     {
       header: 'Bateria',
-      accessor: (row) => (
-        <span
-          className={`font-mono font-bold ${
-            row.telemetry.batteryLevel < 20 ? 'text-rose-400' : 'text-emerald-400'
-          }`}
-        >
-          {row.telemetry.batteryLevel}%
-        </span>
-      ),
+      accessor: (row) => {
+        // Provider real (BRGPS) só informa faixa -1..3, não porcentagem —
+        // nunca inventar "%" pra esses; mostrar a categoria (seção 34 do brief).
+        if (row.provider && row.telemetry.batteryLevelCategory) {
+          const cat = row.telemetry.batteryLevelCategory;
+          const color =
+            cat === 'CRITICAL' ? 'text-rose-400' : cat === 'LOW' ? 'text-amber-400' : cat === 'UNKNOWN' ? 'text-slate-400' : 'text-emerald-400';
+          return <span className={`font-mono font-bold ${color}`}>{BATTERY_LABEL[cat]}</span>;
+        }
+        return (
+          <span className={`font-mono font-bold ${row.telemetry.batteryLevel < 20 ? 'text-rose-400' : 'text-emerald-400'}`}>
+            {row.telemetry.batteryLevel}%
+          </span>
+        );
+      },
     },
     {
       header: 'Última Localização',
       accessor: (row) => (
         <div className="text-[11px] text-slate-300 flex items-center gap-1">
           <MapPin className="w-3 h-3 text-cyan-400" />
-          <span>{row.geofenceName || 'Estacionamento Norte'}</span>
+          <span>{row.geofenceName || '—'}</span>
         </div>
       ),
     },
     {
+      header: 'Origem',
+      accessor: (row) =>
+        row.provider === 'BRGPS' ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/20 rounded">
+            <Satellite className="w-3 h-3" /> API BRGPS
+          </span>
+        ) : (
+          <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">Simulado</span>
+        ),
+    },
+    {
       header: 'Última Comunicação',
-      accessor: (row) => <span className="font-mono text-slate-400">{row.telemetry.lastCommunication}</span>,
+      accessor: (row) => (
+        <span className="font-mono text-slate-400">
+          {row.provider ? formatRelativeTimePtBr(row.telemetry.lastCommunication) : row.telemetry.lastCommunication}
+        </span>
+      ),
     },
   ];
 
@@ -144,7 +177,7 @@ export const CartsModule: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           title="Total Carrinhos"
-          value={totalCartsSimulated}
+          value={totalCarts}
           icon={ShoppingCart}
           variant="cyan"
           subtext="Frota ativa na unidade"
@@ -184,102 +217,6 @@ export const CartsModule: React.FC = () => {
           variant="indigo"
           subtext="Oficina de rodízios"
         />
-      </div>
-
-      {/* 3 Níveis de Cerca Virtual no Perímetro do Supermercado */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-md space-y-5 transition-colors">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">
-              <ShieldAlert className="w-4 h-4 text-emerald-500" />
-              <span>Proteção Ativa em 3 Níveis de Perímetro</span>
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-              Perímetro Inteligente de Cerca Virtual do Supermercado
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Controle automático por Gateways BLE com disparo de alertas e travamento de roda por RF.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-mono font-bold rounded-xl flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              RF Auto-Lock Pronto
-            </span>
-          </div>
-        </div>
-
-        {/* 3 Perimeter Level Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Level 1 Card */}
-          <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/30 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono text-[11px] font-bold rounded-lg border border-emerald-500/30">
-                NÍVEL 1 • RAIO 65M
-              </span>
-              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">145 Carrinhos</span>
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                Zona Interna (Salão & Caixas)
-              </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                Área operacional segura. Carrinhos em uso normal pelos clientes dentro da loja.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              <span>Status: Seguros</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">Sinal BLE 100%</span>
-            </div>
-          </div>
-
-          {/* Level 2 Card */}
-          <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="px-2.5 py-1 bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[11px] font-bold rounded-lg border border-amber-500/30">
-                NÍVEL 2 • RAIO 130M
-              </span>
-              <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">62 Carrinhos</span>
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 text-amber-500" />
-                Zona Periférica (Estacionamento)
-              </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                Área de alerta preventivo. Monitoramento no estacionamento e marquises externas.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              <span>Status: Alerta Amarelo</span>
-              <span className="font-bold text-amber-600 dark:text-amber-400">Notificação Ativa</span>
-            </div>
-          </div>
-
-          {/* Level 3 Card */}
-          <div className="relative overflow-hidden p-4 rounded-2xl bg-gradient-to-br from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/30 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="px-2.5 py-1 bg-rose-500/20 text-rose-700 dark:text-rose-300 font-mono text-[11px] font-bold rounded-lg border border-rose-500/30">
-                NÍVEL 3 • RAIO 220M
-              </span>
-              <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400">3 Carrinhos</span>
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 text-rose-500 animate-pulse" />
-                Limite Externo (Rua / Evasão)
-              </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                Zona crítica de evasão. Trava magnética de roda RF acionada e aviso à segurança.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              <span>Status: Roda Travada RF</span>
-              <span className="font-bold text-rose-600 dark:text-rose-400">Evasão Bloqueada</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Carts Data Table */}

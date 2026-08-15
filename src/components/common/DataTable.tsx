@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, Download, Filter } from 'lucide-react';
+import { Search, Download } from 'lucide-react';
 
 export interface Column<T> {
   header: string;
@@ -29,8 +29,6 @@ export function DataTable<T extends Record<string, any>>({
   exportable = true,
 }: DataTableProps<T>) {
   const [query, setQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   const filtered = data.filter((item) => {
     if (!query.trim()) return true;
@@ -39,9 +37,6 @@ export function DataTable<T extends Record<string, any>>({
       return String(val).toLowerCase().includes(query.toLowerCase());
     });
   });
-
-  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleExportCSV = () => {
     if (!data.length) return;
@@ -85,10 +80,7 @@ export function DataTable<T extends Record<string, any>>({
             <input
               type="text"
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500/50"
             />
@@ -106,10 +98,10 @@ export function DataTable<T extends Record<string, any>>({
         </div>
       </div>
 
-      {/* Responsive Table */}
-      <div className="overflow-x-auto">
+      {/* Responsive & Scrollable Table — cabeçalho fixo, corpo rola pra mostrar todos os registros filtrados de uma vez, sem paginação por clique */}
+      <div className="athos-scroll overflow-x-auto overflow-y-auto max-h-[560px]">
         <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-          <thead className="bg-slate-50 dark:bg-slate-950/80 text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
+          <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800">
             <tr>
               {columns.map((col, idx) => (
                 <th key={idx} className={`px-4 py-3 ${col.className || ''}`}>
@@ -120,14 +112,14 @@ export function DataTable<T extends Record<string, any>>({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
-            {paginated.length === 0 ? (
+            {filtered.length === 0 ? (
               <tr>
                 <td colSpan={columns.length + (actions ? 1 : 0)} className="p-8 text-center text-slate-400 dark:text-slate-500">
                   Nenhum registro encontrado.
                 </td>
               </tr>
             ) : (
-              paginated.map((item) => (
+              filtered.map((item) => (
                 <tr
                   key={keyExtractor(item)}
                   onClick={() => onRowClick && onRowClick(item)}
@@ -157,39 +149,10 @@ export function DataTable<T extends Record<string, any>>({
         </table>
       </div>
 
-      {/* Pagination Footer */}
-      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <div>
-          Mostrando{' '}
-          <span className="font-semibold text-slate-800 dark:text-slate-200">
-            {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-          </span>{' '}
-          até{' '}
-          <span className="font-semibold text-slate-800 dark:text-slate-200">
-            {Math.min(currentPage * pageSize, filtered.length)}
-          </span>{' '}
-          de <span className="font-semibold text-slate-800 dark:text-slate-200">{filtered.length}</span> registros
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-300"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="font-mono text-xs">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            disabled={currentPage >= totalPages}
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-300"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+      {/* Footer: contagem total — a listagem inteira já é visível rolando a tabela acima */}
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 text-xs text-slate-500 dark:text-slate-400">
+        <span className="font-semibold text-slate-800 dark:text-slate-200">{filtered.length}</span>{' '}
+        {filtered.length === 1 ? 'registro carregado' : 'registros carregados'}
       </div>
     </div>
   );

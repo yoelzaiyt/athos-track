@@ -18,8 +18,22 @@ import {
   Trash2,
   CheckCircle2,
   Loader2,
+  Timer,
+  Gauge,
+  Phone,
+  MessageSquare,
+  Power,
+  Route,
+  CircleParking,
+  Thermometer,
+  Hourglass,
+  Vibrate,
+  Siren,
+  Mail,
+  BellRing,
+  Bell,
 } from 'lucide-react';
-import { AssetDevice, AssetCategory, AssetSubcategory, AssetStatus, PositionSource, ScheduledUnlockWindow, FuelTankCalibration } from '../../types';
+import { AssetDevice, AssetCategory, AssetSubcategory, AssetStatus, PositionSource, ScheduledUnlockWindow, FuelTankCalibration, AlertConfig } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { ASSET_CATEGORY_META } from './AssetIconRegistry';
 import { QrScannerModal } from './QrScannerModal';
@@ -91,6 +105,46 @@ const DAY_LABELS: { value: number; label: string }[] = [
   { value: 4, label: 'Qui' },
   { value: 5, label: 'Sex' },
   { value: 6, label: 'Sáb' },
+];
+
+const DEFAULT_ALERT_CONFIG: AlertConfig = {
+  transmissionIntervalSeconds: 30,
+  alertPhoneNumber: '',
+  speedAlertEnabled: false,
+  smsEmailNotificationsEnabled: false,
+  ignitionAlertEnabled: false,
+  routeDeviationAlertEnabled: false,
+  parkingAlertEnabled: false,
+  temperatureAlertEnabled: false,
+  temperatureThresholdC: 8,
+  idleAlertEnabled: false,
+  idleThresholdMinutes: 10,
+  movingAlarmEnabled: false,
+  fuelAlertEnabled: false,
+  fatigueAlertEnabled: false,
+  serviceNotificationsEnabled: false,
+  platformAlarmEnabled: false,
+};
+
+interface AlertShortcut {
+  key: keyof AlertConfig;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const ALERT_SHORTCUTS: AlertShortcut[] = [
+  { key: 'speedAlertEnabled', label: 'Alerta de Velocidade', icon: Gauge },
+  { key: 'ignitionAlertEnabled', label: 'Acionamento de Ignição', icon: Power },
+  { key: 'routeDeviationAlertEnabled', label: 'Desvio de Rota', icon: Route },
+  { key: 'parkingAlertEnabled', label: 'Alerta de Estacionamento', icon: CircleParking },
+  { key: 'temperatureAlertEnabled', label: 'Alerta de Temperatura', icon: Thermometer },
+  { key: 'idleAlertEnabled', label: 'Marcha Lenta (Idle)', icon: Hourglass },
+  { key: 'movingAlarmEnabled', label: 'Alarme de Movimento', icon: Vibrate },
+  { key: 'fuelAlertEnabled', label: 'Alerta de Combustível', icon: Fuel },
+  { key: 'fatigueAlertEnabled', label: 'Condução (Fadiga)', icon: Siren },
+  { key: 'smsEmailNotificationsEnabled', label: 'Notificação SMS/E-mail', icon: MessageSquare },
+  { key: 'serviceNotificationsEnabled', label: 'Notificações de Serviço', icon: Mail },
+  { key: 'platformAlarmEnabled', label: 'Alarme da Plataforma', icon: BellRing },
 ];
 
 const STATUS_OPTIONS: AssetStatus[] = [
@@ -203,6 +257,16 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
 
   const subcategoryOptions = SUBCATEGORY_OPTIONS[form.category] || [];
   const showFleetControls = form.category === 'vehicle' || form.category === 'truck';
+
+  const alertConfig: AlertConfig = { ...DEFAULT_ALERT_CONFIG, ...form.alertConfig };
+
+  const updateAlertConfig = (updates: Partial<AlertConfig>) => {
+    setForm((prev) => ({ ...prev, alertConfig: { ...DEFAULT_ALERT_CONFIG, ...prev.alertConfig, ...updates } }));
+  };
+
+  const toggleAlertShortcut = (key: keyof AlertConfig) => {
+    updateAlertConfig({ [key]: !alertConfig[key] } as Partial<AlertConfig>);
+  };
 
   const togglePositioningSource = (source: PositionSource) => {
     setForm((prev) => {
@@ -610,6 +674,112 @@ export const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
               <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                 Ordem ativa: {(form.positioningPriority || []).join(' > ')}
               </p>
+            )}
+          </div>
+
+          {/* Atalhos de Alertas — grade de toggles por dispositivo */}
+          <div className="space-y-3">
+            <div className="text-[10px] font-mono uppercase font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              <Bell className="w-3.5 h-3.5 text-cyan-500" /> Atalhos de Alertas &amp; Notificações
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                  <Timer className="w-3.5 h-3.5 text-slate-400" /> Intervalo de Transmissão (s)
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  value={alertConfig.transmissionIntervalSeconds}
+                  onChange={(e) => updateAlertConfig({ transmissionIntervalSeconds: Number(e.target.value) })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" /> Telefone para Alertas
+                </label>
+                <input
+                  type="text"
+                  value={alertConfig.alertPhoneNumber}
+                  onChange={(e) => updateAlertConfig({ alertPhoneNumber: e.target.value })}
+                  placeholder="Opcional"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+              {ALERT_SHORTCUTS.map(({ key, label, icon: Icon }) => {
+                const active = Boolean(alertConfig[key]);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleAlertShortcut(key)}
+                    aria-pressed={active}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 text-center transition-colors ${
+                      active
+                        ? 'bg-cyan-500/15 border-cyan-500/40'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                        active ? 'bg-cyan-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span
+                      className={`text-[10px] leading-tight font-semibold ${
+                        active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {label}
+                    </span>
+                    <span
+                      className={`text-[9px] font-mono font-bold uppercase tracking-wide ${
+                        active ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-600'
+                      }`}
+                    >
+                      {active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {(alertConfig.temperatureAlertEnabled || alertConfig.idleAlertEnabled) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {alertConfig.temperatureAlertEnabled && (
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Limite de Temperatura (°C)
+                    </label>
+                    <input
+                      type="number"
+                      value={alertConfig.temperatureThresholdC}
+                      onChange={(e) => updateAlertConfig({ temperatureThresholdC: Number(e.target.value) })}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+                )}
+                {alertConfig.idleAlertEnabled && (
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Limite de Marcha Lenta (min)
+                    </label>
+                    <input
+                      type="number"
+                      value={alertConfig.idleThresholdMinutes}
+                      onChange={(e) => updateAlertConfig({ idleThresholdMinutes: Number(e.target.value) })}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-200 font-mono focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
