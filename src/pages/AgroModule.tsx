@@ -17,6 +17,12 @@ export const AgroModule: React.FC = () => {
     (a) => a.category === 'agro'
   );
 
+  const tractorCount = agroAssets.filter((a) => a.subcategory === 'tractor').length;
+  const livestockTagCount = agroAssets.filter(
+    (a) => a.subcategory === 'cattle' || a.subcategory === 'horse' || a.subcategory === 'sheep'
+  ).length;
+  const monitoredPlots = new Set(agroAssets.map((a) => a.geofenceName).filter(Boolean)).size;
+
   const columns: Column<AssetDevice>[] = [
     {
       header: 'Ativo Agrícola / Animal',
@@ -37,20 +43,22 @@ export const AgroModule: React.FC = () => {
       accessor: (row) => (
         <div>
           <div className="text-slate-700 dark:text-slate-200 font-medium">{row.unitName}</div>
-          <div className="text-[10px] text-lime-600 dark:text-lime-400 font-mono">{row.geofenceName || 'Talhão Geral'}</div>
+          <div className="text-[10px] text-lime-600 dark:text-lime-400 font-mono">{row.geofenceName || '—'}</div>
         </div>
       ),
     },
     {
       header: 'Operador / Responsável',
       accessor: (row) => (
-        <span className="text-slate-600 dark:text-slate-300 text-xs">{row.driverName || row.responsibleName || 'Manejo de Campo'}</span>
+        <span className="text-slate-600 dark:text-slate-300 text-xs">{row.driverName || row.responsibleName || '—'}</span>
       ),
     },
     {
       header: 'Horímetro / Horas',
       accessor: (row) => (
-        <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">{row.telemetry.operatingHours || 920}h</span>
+        <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">
+          {row.telemetry.operatingHours != null ? `${row.telemetry.operatingHours}h` : '—'}
+        </span>
       ),
     },
     {
@@ -103,10 +111,10 @@ export const AgroModule: React.FC = () => {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard title="Ativos Agrícolas" value="140" icon={Sprout} variant="emerald" />
-        <StatCard title="Tratores e Colheitadeiras" value="28" icon={Navigation} variant="amber" />
-        <StatCard title="Tags Auriculares Pecuária" value="112" icon={Layers} variant="cyan" />
-        <StatCard title="Talhões Monitorados" value="12" icon={CheckCircle2} variant="emerald" />
+        <StatCard title="Ativos Agrícolas" value={String(agroAssets.length)} icon={Sprout} variant="emerald" />
+        <StatCard title="Tratores e Colheitadeiras" value={String(tractorCount)} icon={Navigation} variant="amber" />
+        <StatCard title="Tags Auriculares Pecuária" value={String(livestockTagCount)} icon={Layers} variant="cyan" />
+        <StatCard title="Talhões Monitorados" value={String(monitoredPlots)} icon={CheckCircle2} variant="emerald" />
       </div>
 
       <DataTable

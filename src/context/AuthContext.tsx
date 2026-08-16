@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, type Session } from '../lib/supabaseClient';
 import { rowToClient, rowToUnit } from '../lib/mappers';
 
 interface AuthContextType {

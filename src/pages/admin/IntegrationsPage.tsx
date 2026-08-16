@@ -1,8 +1,9 @@
 import React from 'react';
 import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2 } from 'lucide-react';
-import { MOCK_INTEGRATIONS } from '../../mock';
+import { useAssets } from '../../context/AssetContext';
 
 export const IntegrationsPage: React.FC = () => {
+  const { integrations } = useAssets();
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -21,7 +22,7 @@ export const IntegrationsPage: React.FC = () => {
 
       {/* Grid of Integration Protocol Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {MOCK_INTEGRATIONS.map((int) => (
+        {integrations.map((int) => (
           <div
             key={int.id}
             className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-3 hover:border-cyan-500/30 transition-colors"
@@ -30,9 +31,21 @@ export const IntegrationsPage: React.FC = () => {
               <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 rounded-lg">
                 {int.type}
               </span>
-              <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>ONLINE</span>
+              <span
+                className={`flex items-center gap-1.5 text-xs font-mono font-semibold ${
+                  int.status === 'active'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : int.status === 'testing'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    int.status === 'active' ? 'bg-emerald-400 animate-pulse' : int.status === 'testing' ? 'bg-amber-400' : 'bg-slate-400'
+                  }`}
+                />
+                <span>{int.status === 'active' ? 'ATIVA' : int.status === 'testing' ? 'EM TESTE' : 'INATIVA'}</span>
               </span>
             </div>
 

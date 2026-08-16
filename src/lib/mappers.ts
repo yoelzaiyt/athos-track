@@ -25,6 +25,9 @@ import type {
   CompanyUnit,
   ProviderDevice,
   ProviderHealth,
+  SystemIntegration,
+  RoutePoint,
+  UserProfile,
 } from '../types';
 import type {
   HomologationRequest,
@@ -443,6 +446,38 @@ export const homologationReportToInsertRow = (r: Omit<HomologationReport, 'id' |
   toRow(r, HOMOLOGATION_REPORT_FIELDS);
 
 export const rowToUnit = (row: Row): CompanyUnit => ({ id: row.id, ...fromRow(row, UNIT_FIELDS) } as CompanyUnit);
+
+// ===================== Perfis de Usuário =====================
+
+const USER_PROFILE_FIELDS: FieldMap = [
+  ['name', 'name'], ['email', 'email'], ['role', 'role'], ['avatarUrl', 'avatar_url'],
+  ['clientId', 'client_id'], ['unitId', 'unit_id'],
+];
+
+export const rowToUserProfile = (row: Row): UserProfile =>
+  ({ id: row.id, ...fromRow(row, USER_PROFILE_FIELDS) } as UserProfile);
+export const userProfileToInsertRow = (u: Omit<UserProfile, 'id'>): Row => toRow(u, USER_PROFILE_FIELDS);
+export const userProfileUpdatesToRow = (updates: Partial<UserProfile>): Row =>
+  toRowPartial(updates, USER_PROFILE_FIELDS);
+
+// ===================== Integrações de Sistema =====================
+
+const INTEGRATION_FIELDS: FieldMap = [
+  ['name', 'name'], ['type', 'type'], ['status', 'status'], ['lastPing', 'last_ping'],
+  ['activeDevicesCount', 'active_devices_count'], ['endpointUrl', 'endpoint_url'], ['apiKey', 'api_key'],
+];
+
+export const rowToIntegration = (row: Row): SystemIntegration =>
+  ({ id: row.id, ...fromRow(row, INTEGRATION_FIELDS) } as SystemIntegration);
+
+// ===================== Pontos de Rota (breadcrumb histórico) =====================
+
+const ROUTE_POINT_FIELDS: FieldMap = [
+  ['latitude', 'latitude'], ['longitude', 'longitude'], ['speed', 'speed'],
+  ['event', 'event'], ['timestamp', 'recorded_at'],
+];
+
+export const rowToRoutePoint = (row: Row): RoutePoint => fromRow(row, ROUTE_POINT_FIELDS) as RoutePoint;
 
 // ===================== Recuperação de Campo (ATHOS Field) =====================
 // last_asset_lat/lng e collaborator_lat/lng são colunas planas no banco, mas viram

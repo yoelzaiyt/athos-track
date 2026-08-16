@@ -17,6 +17,11 @@ export const BicyclesModule: React.FC = () => {
     (a) => a.category === 'bike'
   );
 
+  const inUseCount = bikes.filter((a) => a.status === 'in_use').length;
+  const outOfAreaCount = bikes.filter((a) => a.status === 'out_of_geofence').length;
+  const maintenanceCount = bikes.filter((a) => a.status === 'maintenance').length;
+  const availableCount = bikes.length - inUseCount - outOfAreaCount - maintenanceCount;
+
   const columns: Column<AssetDevice>[] = [
     {
       header: 'Bicicleta',
@@ -106,11 +111,11 @@ export const BicyclesModule: React.FC = () => {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard title="Total Bicicletas" value="50" icon={Bike} variant="emerald" />
-        <StatCard title="Disponíveis" value="38" icon={CheckCircle2} variant="emerald" />
-        <StatCard title="Em Utilização" value="10" icon={Navigation} variant="cyan" />
-        <StatCard title="Fora da Área" value="1" icon={ShieldAlert} variant="rose" />
-        <StatCard title="Manutenção" value="1" icon={Wrench} variant="slate" />
+        <StatCard title="Total Bicicletas" value={String(bikes.length)} icon={Bike} variant="emerald" />
+        <StatCard title="Disponíveis" value={String(availableCount)} icon={CheckCircle2} variant="emerald" />
+        <StatCard title="Em Utilização" value={String(inUseCount)} icon={Navigation} variant="cyan" />
+        <StatCard title="Fora da Área" value={String(outOfAreaCount)} icon={ShieldAlert} variant="rose" />
+        <StatCard title="Manutenção" value={String(maintenanceCount)} icon={Wrench} variant="slate" />
       </div>
 
       <DataTable
