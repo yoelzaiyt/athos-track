@@ -9,7 +9,7 @@
 
 import { Client } from 'pg';
 import type { NormalizedPosition } from './types.ts';
-import { isInsideGeofence } from './geofenceEngine.ts';
+import { isInsideGeofence } from '../shared/geofenceEngine.ts';
 import { positionFingerprint } from './BrGpsMapper.ts';
 
 export interface PositionTarget {

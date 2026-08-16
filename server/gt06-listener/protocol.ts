@@ -7,14 +7,24 @@ export const START_STANDARD = Buffer.from([0x78, 0x78]);
 export const START_EXTENDED = Buffer.from([0x79, 0x79]);
 export const STOP = Buffer.from([0x0d, 0x0a]);
 
+// Números de protocolo conforme a doc "GPS Tracker Communication Protocol"
+// (seção 4.3). 0x16 é Alarm, não localização — corrigido depois de comparar
+// byte a byte com o PDF (a versão anterior tratava 0x16 como mais uma
+// variante de localização e descartava o código de alarme embutido nele).
+// 0x23/0x26 não aparecem nessa doc; mantidos por compatibilidade com
+// hardware já testado antes desta revisão — se algum dia confirmarmos a
+// origem exata, documentar aqui.
 export const PROTOCOL = {
   LOGIN: 0x01,
   LOCATION: 0x12,
-  LOCATION_LBS: 0x22,
-  LOCATION_LBS_ALT: 0x16,
-  LOCATION_LBS_EXT: 0x26,
+  LOCATION_V3: 0x22, // seção 5.2.3
+  LOCATION_V4: 0x32, // seção 5.2.5
+  LOCATION_4G: 0xa0, // seção 5.2.4
+  LOCATION_LEGACY_EXT: 0x26, // não documentado nesta versão do PDF, mantido por compatibilidade
   HEARTBEAT: 0x13,
-  HEARTBEAT_ALT: 0x23,
+  HEARTBEAT_ALT: 0x23, // não documentado nesta versão do PDF, mantido por compatibilidade
+  ALARM: 0x16, // seção 5.3 — GPS+LBS+status do terminal+código de alarme
+  RFID: 0x17, // seção 5.5 — GPS+LBS+cartão RFID
 } as const;
 
 // Tabela CRC-16/X-25 (CRC-ITU), poly reverso 0x8408 — é o checksum que o GT06
@@ -106,9 +116,18 @@ export function parseFrames(input: Buffer): ParseResult {
 // Monta o frame de ACK que o servidor devolve pro login (0x01) e pro
 // heartbeat (0x13/0x23) — sem isso a maioria dos GT06 derruba a conexão por
 // timeout depois de alguns segundos sem confirmação.
+//
+// Bug corrigido nesta revisão: o corpo usado pro CRC e pro frame tinha 2
+// bytes a mais (Buffer.alloc(lengthByte + 1) = 6 bytes) do que os 4 bytes
+// reais (packet length + protocolo + serial) que a seção 4.6 da doc manda
+// somar no CRC-ITU — o alloc de 6 deixava 2 bytes 0x00 de lixo entre o
+// serial e o CRC, e o CRC saía calculado sobre esse lixo. Conferido contra
+// os exemplos de "reception" da doc (seções 5.1.2.3/5.1.3 e apêndice vii):
+// buildAck(0x01, 1) tem que bater byte a byte com "78 78 05 01 00 01 D9 DC
+// 0D 0A" — ver server/gt06-listener/protocol.test.ts.
 export function buildAck(protocol: number, serial: number): Buffer {
   const lengthByte = 5; // protocolo(1) + serial(2) + crc(2), sem conteúdo
-  const body = Buffer.alloc(lengthByte + 1);
+  const body = Buffer.alloc(4);
   body[0] = lengthByte;
   body[1] = protocol;
   body.writeUInt16BE(serial, 2);
@@ -178,9 +197,99 @@ export interface DecodedHeartbeat {
   terminalInfo: number;
   voltageLevel: number;
   gsmSignal: number;
+  // Alarm/Language (seção 5.4.1.7) — o heartbeat também pode carregar um
+  // código de alarme (ex.: bateria baixa), não só o pacote de Alarm (0x16).
+  alarmCode?: number;
+  language?: number;
 }
 
 export function decodeHeartbeat(content: Buffer): DecodedHeartbeat | null {
   if (content.length < 3) return null;
-  return { terminalInfo: content[0], voltageLevel: content[1], gsmSignal: content[2] };
+  const base = { terminalInfo: content[0], voltageLevel: content[1], gsmSignal: content[2] };
+  if (content.length >= 5) {
+    return { ...base, alarmCode: content[3], language: content[4] };
+  }
+  return base;
+}
+
+// Pacote de Alarm (0x16, seção 5.3): mesmo cabeçalho GPS de decodeLocation
+// + bloco LBS + status do terminal + código de alarme. O bloco GPS (18
+// bytes) é decodificado reaproveitando decodeLocation.
+export interface DecodedAlarm {
+  location: DecodedLocation | null;
+  mcc: number;
+  mnc: number;
+  lac: number;
+  cellId: number;
+  terminalInfo: number;
+  voltageLevel: number;
+  gsmSignal: number;
+  alarmCode: number;
+  language: number;
+}
+
+export function decodeAlarm(content: Buffer): DecodedAlarm | null {
+  if (content.length < 32) return null;
+  const location = decodeLocation(content);
+
+  const mcc = content.readUInt16BE(19);
+  const mnc = content[21];
+  const lac = content.readUInt16BE(22);
+  const cellId = (content[24] << 16) | (content[25] << 8) | content[26];
+  const terminalInfo = content[27];
+  const voltageLevel = content[28];
+  const gsmSignal = content[29];
+  const alarmCode = content[30];
+  const language = content[31];
+
+  return { location, mcc, mnc, lac, cellId, terminalInfo, voltageLevel, gsmSignal, alarmCode, language };
+}
+
+// Pacote de RFID (0x17, seção 5.5): cabeçalho GPS (18) + LBS sem byte de
+// tamanho (8: MCC 2, MNC 1, LAC 2, Cell ID 3) + cartão RFID (8) + flag de
+// validade (1) = 35 bytes.
+export interface DecodedRfid {
+  location: DecodedLocation | null;
+  cardId: string; // 8 bytes em hex
+  valid: boolean;
+}
+
+export function decodeRfid(content: Buffer): DecodedRfid | null {
+  if (content.length < 35) return null;
+  const location = decodeLocation(content);
+  const cardId = content.subarray(26, 34).toString('hex');
+  const valid = content[34] === 0x01;
+  return { location, cardId, valid };
+}
+
+// Mapeamento do byte "former bit" do campo Alarm/Language (seção 5.3.1.17 /
+// 5.4.1.7) para o vocabulário de alertas do ATHOS. alertType null significa
+// "não vira um SystemAlert" (estado normal, ou informação só de telemetria
+// como ACC on/off, que já é refletida em telemetry.ignition).
+export interface AlarmMapping {
+  label: string;
+  alertType: string | null;
+  severity: 'info' | 'warning' | 'critical';
+}
+
+const ALARM_CODE_MAP: Record<number, AlarmMapping> = {
+  0x00: { label: 'Normal', alertType: null, severity: 'info' },
+  0x01: { label: 'SOS', alertType: 'sos', severity: 'critical' },
+  0x02: { label: 'Corte de energia', alertType: 'power_cut', severity: 'critical' },
+  0x03: { label: 'Choque/impacto', alertType: 'impact', severity: 'warning' },
+  0x06: { label: 'Excesso de velocidade', alertType: 'speeding', severity: 'warning' },
+  0x09: { label: 'Saída de cerca virtual', alertType: 'geofence_exit', severity: 'critical' },
+  0x0e: { label: 'Tensão externa baixa', alertType: 'low_battery', severity: 'warning' },
+  0x13: { label: 'Rastreador removido', alertType: 'device_removed', severity: 'critical' },
+  0x14: { label: 'Alarme de porta', alertType: null, severity: 'info' },
+  0x19: { label: 'Bateria interna baixa', alertType: 'low_battery', severity: 'warning' },
+  0xf0: { label: 'Aceleração brusca', alertType: 'harsh_driving', severity: 'warning' },
+  0xf1: { label: 'Frenagem brusca', alertType: 'harsh_driving', severity: 'warning' },
+  0xf2: { label: 'Colisão', alertType: 'impact', severity: 'critical' },
+  0xfe: { label: 'Ignição ligada', alertType: null, severity: 'info' },
+  0xff: { label: 'Ignição desligada', alertType: null, severity: 'info' },
+};
+
+export function mapAlarmCode(code: number): AlarmMapping {
+  return ALARM_CODE_MAP[code] ?? { label: `Desconhecido (0x${code.toString(16).padStart(2, '0')})`, alertType: null, severity: 'info' };
 }

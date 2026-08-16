@@ -25,7 +25,7 @@ O navegador **nunca** conhece o `api_token`, a `BRGPS_BASE_URL` ou qualquer cred
 | `BrGpsAdapter.ts` | Fala o protocolo do fornecedor: paginação de `/tag/all`, batching de `/tag`, `/tag/history`, `PATCH /tag` |
 | `BrGpsMapper.ts` | Puro — converte formato cru em `NormalizedPosition`, battery mapping, fingerprint de dedup |
 | `db.ts` (`BrGpsRepository`) | Persistência no Postgres do ATHOS: current position, histórico, geofence, health |
-| `geofenceEngine.ts` | Point-in-circle / point-in-polygon reaproveitando o tipo `Geofence` existente |
+| `../shared/geofenceEngine.ts` | Point-in-circle / point-in-polygon reaproveitando o tipo `Geofence` existente (compartilhado com outras integrações, ex. GT06) |
 | `BrGpsService.ts` | Orquestra Adapter + Repository: discovery, sync tick, histórico, ativação |
 
 Entidades de domínio ficam neutras de provedor (`NormalizedPosition`, `Asset`, `Device`, não `BrGpsPosition`/`BrGpsCart`) para permitir trocar o adapter no futuro (ex.: comunicação direta tag → servidor ATHOS, sem servidor do fornecedor) sem alterar frontend, geofence, alertas ou recuperação.

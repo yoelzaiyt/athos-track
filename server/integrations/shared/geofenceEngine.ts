@@ -1,7 +1,9 @@
 // Motor de geofence mínimo, reaproveitando o tipo Geofence já existente no ATHOS
 // (circle/polygon — src/types/index.ts). Não é um sistema paralelo: as cercas
 // continuam sendo cadastradas na tela normal de Geofences; isto só decide
-// dentro/fora para uma posição recebida via BRGPS. Ver seção 27 do brief.
+// dentro/fora para uma posição recebida de um provedor real (BRGPS, GT06
+// direto, etc.) — compartilhado entre server/integrations/*. Ver seção 27 do
+// brief de integração BRGPS (onde essa lógica nasceu).
 
 export interface GeofenceLike {
   id: string;

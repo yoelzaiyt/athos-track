@@ -1,8 +1,21 @@
 // Listener TCP real do protocolo GT06 — recebe conexões de rastreadores
-// físicos, decodifica login/localização/heartbeat e grava eventos de
-// homologação no Supabase. Substitui, para testes com hardware real, o
-// GT06DemoAdapter (src/homologation/adapters/gt06DemoAdapter.ts), que só
-// simula a sequência com timers.
+// físicos e decodifica login/localização/heartbeat/alarme/RFID. Dois modos,
+// decididos pelo IMEI do pacote de login:
+//
+//  - PRODUÇÃO: o IMEI já existe em assets.imei (ativo real de frota) — grava
+//    posição/telemetria/histórico/alertas pelo mesmo caminho que o BRGPS usa
+//    (server/integrations/gt06/db.ts, espelhando server/integrations/brgps/db.ts).
+//  - HOMOLOGAÇÃO: o IMEI não é de nenhum asset, mas existe em
+//    homologation_requests.test_imei — grava eventos de progresso pro portal
+//    de homologação de fornecedor (fluxo original deste arquivo).
+//
+// Se o IMEI não bater com nenhum dos dois, a conexão ainda é decodificada e
+// logada no console (dá pra confirmar que o dispositivo está falando GT06
+// corretamente), só não persiste nada.
+//
+// Substitui, para testes com hardware real, o GT06DemoAdapter
+// (src/homologation/adapters/gt06DemoAdapter.ts), que só simula a sequência
+// com timers.
 //
 // Uso: npx tsx server/gt06-listener/index.ts
 // (ou: npm run gt06:listen)
@@ -12,21 +25,15 @@
 //   GT06_LISTENER_HOST   interface a escutar (padrão 0.0.0.0, todas)
 //   DIRECT_URL           string de conexão Postgres (já usada pelas migrations)
 //
-// Pré-requisito pro evento ficar registrado: o IMEI do dispositivo real
-// precisa já existir em homologation_requests.test_imei — ou seja, alguém
-// preencheu o formulário público (/homologacao) com esse IMEI antes de ligar
-// o rastreador. Sem isso o listener ainda decodifica e loga tudo no console
-// (então dá pra confirmar a conexão), só não persiste no banco (não há
-// request_id pra satisfazer a FK).
-//
 // Por que Postgres direto (DIRECT_URL) em vez da anon key do Supabase: as
 // tabelas de homologação dão à role anon permissão só de INSERT, sem SELECT
 // (ver supabase/migrations/20260814160000_add_homologation_tables.sql) — de
 // propósito, pra um fornecedor nunca ler dados de outra solicitação pelo
-// banco. Esse listener precisa localizar a solicitação pelo IMEI (SELECT),
-// então atua como gateway confiável (mesmo padrão de scripts/seed-supabase.ts),
-// não como cliente anônimo. Não expor este processo direto à internet sem
-// revisitar essa decisão.
+// banco. Esse listener precisa localizar assets/solicitações pelo IMEI
+// (SELECT), então atua como gateway confiável (mesmo padrão de
+// scripts/seed-supabase.ts e server/integrations/brgps), não como cliente
+// anônimo. Não expor este processo direto à internet sem revisitar essa
+// decisão.
 
 import net from 'node:net';
 import path from 'node:path';
@@ -34,12 +41,16 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { Client } from 'pg';
+import { Gt06Repository, type AssetTarget } from '../integrations/gt06/db.ts';
 import {
   parseFrames,
   buildAck,
   decodeBcdImei,
   decodeLocation,
   decodeHeartbeat,
+  decodeAlarm,
+  decodeRfid,
+  mapAlarmCode,
   PROTOCOL,
   type Gt06Frame,
 } from './protocol.ts';
@@ -58,10 +69,14 @@ if (!connectionString) {
 
 const db = new Client({ connectionString });
 await db.connect();
+const gt06Repo = new Gt06Repository(connectionString);
+await gt06Repo.connect();
 console.log('[gt06-listener] conectado ao Postgres.');
 
 interface Session {
   imei?: string;
+  mode: 'production' | 'homologation' | 'unknown';
+  assetTarget?: AssetTarget;
   requestId?: string;
   sessionToken?: string;
   deviceId?: string;
@@ -127,26 +142,34 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
     case PROTOCOL.LOGIN: {
       const imei = decodeBcdImei(frame.content);
       session.imei = imei;
-      console.log(`[gt06-listener] LOGIN de ${remote} — IMEI ${imei}`);
-
       socket.write(buildAck(frame.protocol, frame.serial));
       session.loginOk = true;
 
+      const asset = await gt06Repo.findAssetByImei(imei);
+      if (asset) {
+        session.mode = 'production';
+        session.assetTarget = asset;
+        console.log(`[gt06-listener] LOGIN de ${remote} — IMEI ${imei} vinculado ao asset "${asset.assetName}" (${asset.assetCode}), modo produção.`);
+        break;
+      }
+
       const request = await findRequestByImei(imei);
       if (!request) {
+        session.mode = 'unknown';
         console.warn(
-          `[gt06-listener] IMEI ${imei} não corresponde a nenhuma solicitação de homologação ` +
-          `(homologation_requests.test_imei) — conexão confirmada, mas nada será gravado no banco. ` +
-          `Cadastre esse IMEI em /homologacao primeiro se quiser rastrear o histórico.`
+          `[gt06-listener] LOGIN de ${remote} — IMEI ${imei} não corresponde a nenhum asset (assets.imei) ` +
+          `nem a solicitação de homologação (homologation_requests.test_imei) — conexão confirmada, mas ` +
+          `nada será gravado no banco. Cadastre o dispositivo em um asset, ou o IMEI em /homologacao.`
         );
         return;
       }
 
+      session.mode = 'homologation';
       session.requestId = request.id;
       session.sessionToken = request.session_token;
       session.deviceId = await insertDevice(session);
       await insertEvent(session, { packetType: 'LOGIN_PACKET (0x01)', step: 'imei_identified', status: 'success' });
-      console.log(`[gt06-listener] IMEI ${imei} vinculado à solicitação ${request.id} — evento gravado.`);
+      console.log(`[gt06-listener] LOGIN de ${remote} — IMEI ${imei} vinculado à solicitação de homologação ${request.id}.`);
       break;
     }
 
@@ -159,18 +182,43 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       );
       socket.write(buildAck(frame.protocol, frame.serial));
       session.heartbeatOk = true;
-      await insertEvent(session, {
-        packetType: `HEARTBEAT (0x${frame.protocol.toString(16)})`,
-        step: 'heartbeat_received',
-        status: 'success',
-      });
+
+      if (hb && session.mode === 'production' && session.assetTarget) {
+        await gt06Repo.applyHeartbeat(session.assetTarget.assetId, hb.voltageLevel);
+
+        // Seção 5.4.1.7 / nota do doc: alarme de bateria baixa costuma vir
+        // repetido pelo heartbeat, não só pelo pacote de Alarm (0x16).
+        if (hb.alarmCode !== undefined) {
+          const mapping = mapAlarmCode(hb.alarmCode);
+          if (mapping.alertType) {
+            const lastPos = await gt06Repo.getLastKnownPosition(session.assetTarget.assetId);
+            if (lastPos) {
+              await gt06Repo.createAlert(session.assetTarget, {
+                type: mapping.alertType,
+                title: mapping.label,
+                message: `${session.assetTarget.assetName} (${session.assetTarget.assetCode}) — ${mapping.label} (heartbeat GT06).`,
+                severity: mapping.severity,
+                latitude: lastPos.latitude,
+                longitude: lastPos.longitude,
+              });
+            }
+          }
+        }
+      } else if (session.mode === 'homologation') {
+        await insertEvent(session, {
+          packetType: `HEARTBEAT (0x${frame.protocol.toString(16)})`,
+          step: 'heartbeat_received',
+          status: 'success',
+        });
+      }
       break;
     }
 
     case PROTOCOL.LOCATION:
-    case PROTOCOL.LOCATION_LBS:
-    case PROTOCOL.LOCATION_LBS_ALT:
-    case PROTOCOL.LOCATION_LBS_EXT: {
+    case PROTOCOL.LOCATION_V3:
+    case PROTOCOL.LOCATION_V4:
+    case PROTOCOL.LOCATION_4G:
+    case PROTOCOL.LOCATION_LEGACY_EXT: {
       const loc = decodeLocation(frame.content);
       if (loc) {
         console.log(
@@ -182,11 +230,68 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
         console.warn(`[gt06-listener] pacote de localização de ${remote} curto demais pra decodificar. raw=${frame.content.toString('hex')}`);
       }
       session.locationOk = true;
-      await insertEvent(session, {
-        packetType: `GPS_LOCATION (0x${frame.protocol.toString(16)})`,
-        step: 'location_packet_received',
-        status: loc ? 'success' : 'error',
-      });
+
+      if (loc && session.mode === 'production' && session.assetTarget) {
+        await applyLocationToAsset(session.assetTarget, loc);
+      } else if (session.mode === 'homologation') {
+        await insertEvent(session, {
+          packetType: `GPS_LOCATION (0x${frame.protocol.toString(16)})`,
+          step: 'location_packet_received',
+          status: loc ? 'success' : 'error',
+        });
+      }
+      break;
+    }
+
+    case PROTOCOL.ALARM: {
+      const alarm = decodeAlarm(frame.content);
+      const mapping = alarm ? mapAlarmCode(alarm.alarmCode) : null;
+      console.log(
+        `[gt06-listener] ALARME de ${remote} (imei=${session.imei ?? '?'})` +
+        (alarm ? ` — ${mapping!.label} (0x${alarm.alarmCode.toString(16).padStart(2, '0')})` : ' — conteúdo curto demais pra decodificar')
+      );
+      session.locationOk = session.locationOk || Boolean(alarm?.location);
+
+      if (alarm?.location && session.mode === 'production' && session.assetTarget) {
+        // Bit1 do Terminal Information (seção 5.3.1.14): 1 = ACC alta (ignição ligada).
+        const ignition = (alarm.terminalInfo & 0x02) !== 0;
+        await applyLocationToAsset(session.assetTarget, alarm.location, ignition);
+        if (mapping?.alertType) {
+          await gt06Repo.createAlert(session.assetTarget, {
+            type: mapping.alertType,
+            title: mapping.label,
+            message: `${session.assetTarget.assetName} (${session.assetTarget.assetCode}) — ${mapping.label} (alarme GT06).`,
+            severity: mapping.severity,
+            latitude: alarm.location.latitude,
+            longitude: alarm.location.longitude,
+          });
+        }
+      } else if (session.mode === 'homologation') {
+        await insertEvent(session, {
+          packetType: `ALARM (0x16)${mapping ? ` — ${mapping.label}` : ''}`,
+          step: 'location_packet_received',
+          status: alarm ? 'success' : 'error',
+        });
+      }
+      break;
+    }
+
+    case PROTOCOL.RFID: {
+      const rfid = decodeRfid(frame.content);
+      console.log(
+        `[gt06-listener] RFID de ${remote} (imei=${session.imei ?? '?'})` +
+        (rfid ? ` — cartão ${rfid.cardId} (${rfid.valid ? 'válido' : 'inválido'})` : ' — conteúdo curto demais pra decodificar')
+      );
+      // Sem persistência dedicada ainda (não existe hoje um registro de
+      // "quem passou o cartão" no schema, distinto do doorLockCardId da
+      // trava elétrica) — decodificado corretamente, mas só logado por ora.
+      if (session.mode === 'homologation') {
+        await insertEvent(session, {
+          packetType: 'RFID_CARD (0x17)',
+          step: 'location_packet_received',
+          status: rfid ? 'success' : 'error',
+        });
+      }
       break;
     }
 
@@ -198,11 +303,41 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
   }
 }
 
+async function applyLocationToAsset(
+  target: AssetTarget,
+  loc: NonNullable<ReturnType<typeof decodeLocation>>,
+  ignition?: boolean
+) {
+  const result = await gt06Repo.applyPosition(target, {
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    speedKmh: loc.speedKmh,
+    course: loc.course,
+    occurredAt: loc.timestamp,
+    satellites: loc.satellites,
+    ignition,
+  });
+
+  if (result.geofenceEvent) {
+    const event = result.geofenceEvent;
+    await gt06Repo.createAlert(target, {
+      type: event.type === 'exit' ? 'geofence_exit' : 'geofence_entry',
+      title: event.type === 'exit' ? 'Saída de cerca virtual' : 'Retorno à cerca virtual',
+      message: `${target.assetName} (${target.assetCode}) ${event.type === 'exit' ? 'saiu de' : 'retornou a'} "${event.geofenceName}" — posição real via rastreador GT06.`,
+      severity: event.type === 'exit' ? 'critical' : 'info',
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    });
+  }
+
+  return result;
+}
+
 const server = net.createServer((socket) => {
   const remote = `${socket.remoteAddress}:${socket.remotePort}`;
   console.log(`[gt06-listener] nova conexão: ${remote}`);
 
-  const session: Session = { loginOk: false, locationOk: false, heartbeatOk: false, buffer: Buffer.alloc(0) };
+  const session: Session = { mode: 'unknown', loginOk: false, locationOk: false, heartbeatOk: false, buffer: Buffer.alloc(0) };
 
   socket.on('data', (chunk) => {
     session.buffer = Buffer.concat([session.buffer, chunk]);
@@ -237,5 +372,6 @@ process.on('SIGINT', async () => {
   console.log('\n[gt06-listener] encerrando...');
   server.close();
   await db.end();
+  await gt06Repo.disconnect();
   process.exit(0);
 });

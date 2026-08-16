@@ -392,7 +392,11 @@ export type AlertType =
   | 'high_risk_zone_entry'
   | 'tire_pressure'
   | 'harsh_driving'
-  | 'pairing_separation';
+  | 'pairing_separation'
+  // Vindos do pacote de Alarm do protocolo GT06 (0x16) — ver server/gt06-listener/protocol.ts
+  | 'sos'
+  | 'power_cut'
+  | 'device_removed';
 
 export interface SystemAlert {
   id: string;
