@@ -5,7 +5,12 @@
 alter table recovery_occurrences add column if not exists return_destination_lat double precision;
 alter table recovery_occurrences add column if not exists return_destination_lng double precision;
 
-create or replace function resolve_recovery_mission(p_token uuid)
+-- drop necessário: a versão anterior da função (migration 20260815050000)
+-- tem uma lista de colunas de saída diferente (menos 2 colunas), e o Postgres
+-- não permite `create or replace function` mudar as colunas de RETURNS TABLE.
+drop function if exists resolve_recovery_mission(uuid);
+
+create function resolve_recovery_mission(p_token uuid)
 returns table (
   id uuid,
   asset_name text,

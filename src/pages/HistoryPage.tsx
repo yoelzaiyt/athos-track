@@ -1,44 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Pause, Calendar, Clock, MapPin, Navigation, Filter } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
 import { AssetMap } from '../components/map/AssetMap';
 import { RoutePoint } from '../types';
+import { supabase } from '../lib/supabaseClient';
+import { rowToRoutePoint } from '../lib/mappers';
 
 export const HistoryPage: React.FC = () => {
   const { assets } = useAssets();
   const [selectedAssetId, setSelectedAssetId] = useState(assets[0]?.id || '');
   const [startDate, setStartDate] = useState('2026-08-10');
   const [endDate, setEndDate] = useState('2026-08-10');
+  const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
 
   const targetAsset = assets.find((a) => a.id === selectedAssetId) || assets[0];
 
-  // Base lat/lng from target asset
-  const baseLat = targetAsset?.telemetry.latitude || -23.641414;
-  const baseLng = targetAsset?.telemetry.longitude || -46.644827;
+  // Breadcrumb real de asset_route_points, filtrado pelo intervalo de datas selecionado.
+  useEffect(() => {
+    if (!targetAsset) {
+      setRoutePoints([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('asset_route_points')
+        .select('*')
+        .eq('asset_id', targetAsset.id)
+        .gte('recorded_at', `${startDate}T00:00:00`)
+        .lte('recorded_at', `${endDate}T23:59:59`)
+        .order('recorded_at', { ascending: true });
+      if (cancelled) return;
+      if (error) console.error('[HistoryPage] Failed to load route points:', error.message);
+      setRoutePoints((data ?? []).map(rowToRoutePoint));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetAsset?.id, startDate, endDate]);
 
-  // Mock route points array for replay
-  const mockRoutePoints: RoutePoint[] = [
-    { latitude: baseLat - 0.02, longitude: baseLng - 0.02, speed: 0, timestamp: '08:00:00', event: 'Ignição' },
-    { latitude: baseLat - 0.015, longitude: baseLng - 0.018, speed: 35, timestamp: '08:05:00' },
-    { latitude: baseLat - 0.01, longitude: baseLng - 0.012, speed: 64, timestamp: '08:12:00' },
-    { latitude: baseLat - 0.005, longitude: baseLng - 0.008, speed: 72, timestamp: '08:20:00' },
-    { latitude: baseLat, longitude: baseLng, speed: 45, timestamp: '08:30:00' },
-    { latitude: baseLat + 0.005, longitude: baseLng + 0.005, speed: 0, timestamp: '09:00:00', event: 'Parada Doca' },
-    { latitude: baseLat + 0.01, longitude: baseLng + 0.01, speed: 58, timestamp: '09:45:00' },
-    { latitude: baseLat + 0.015, longitude: baseLng + 0.012, speed: 82, timestamp: '10:15:00' },
-    { latitude: baseLat + 0.02, longitude: baseLng + 0.015, speed: 0, timestamp: '11:00:00', event: 'Chegada Final' },
-  ];
-
-  const mockStoppages = [
-    {
-      latitude: baseLat + 0.005,
-      longitude: baseLng + 0.005,
-      durationMin: 45,
-      startTime: '09:00:00',
-      endTime: '09:45:00',
-      locationName: 'Centro de Distribuição Cajamar Doca 04',
-    },
-  ];
+  // Paradas derivadas dos pontos com velocidade 0 marcados com evento (não há
+  // tabela dedicada de paradas — cada trecho parado vira um marcador no mapa).
+  const stoppages = routePoints
+    .filter((p) => p.speed === 0 && p.event)
+    .map((p) => ({
+      latitude: p.latitude,
+      longitude: p.longitude,
+      durationMin: 0,
+      startTime: p.timestamp,
+      endTime: p.timestamp,
+      locationName: p.event as string,
+    }));
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
@@ -100,8 +112,8 @@ export const HistoryPage: React.FC = () => {
           <AssetMap
             heightClass="h-[500px]"
             selectedAssetOverride={targetAsset}
-            routeHistory={mockRoutePoints}
-            stoppagesList={mockStoppages}
+            routeHistory={routePoints}
+            stoppagesList={stoppages}
           />
         </div>
 
@@ -109,11 +121,16 @@ export const HistoryPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 pb-2 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <span>Pontos de Registro no Trajeto</span>
-            <span className="text-xs font-mono text-cyan-600 dark:text-cyan-400 font-bold">{mockRoutePoints.length} Registros</span>
+            <span className="text-xs font-mono text-cyan-600 dark:text-cyan-400 font-bold">{routePoints.length} Registros</span>
           </h3>
 
           <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-            {mockRoutePoints.map((pt, idx) => (
+            {routePoints.length === 0 && (
+              <div className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">
+                Nenhum registro de trajeto para o período selecionado.
+              </div>
+            )}
+            {routePoints.map((pt, idx) => (
               <div
                 key={idx}
                 className="p-3 bg-slate-50 dark:bg-slate-950/80 rounded-xl border border-slate-200 dark:border-slate-800/80 text-xs space-y-1 hover:border-cyan-500/30 transition-colors"

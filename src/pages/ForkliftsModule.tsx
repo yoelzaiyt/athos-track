@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Forklift, User, Clock, Wrench, Shield, CheckCircle2, AlertTriangle, Radio, Map as MapIcon } from 'lucide-react';
+import { Forklift, User, Clock, Wrench, CheckCircle2, Map as MapIcon } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { DataTable, Column } from '../components/common/DataTable';
 import { LiveMap } from '../components/map/LiveMap';
@@ -16,6 +16,10 @@ export const ForkliftsModule: React.FC = () => {
   const forklifts = getFilteredAssets(selectedClientId, selectedUnitId).filter(
     (a) => a.category === 'forklift'
   );
+
+  const inOperationCount = forklifts.filter((a) => a.status === 'moving' || a.status === 'in_use' || a.status === 'online').length;
+  const stoppedCount = forklifts.filter((a) => a.status === 'stopped').length;
+  const maintenanceCount = forklifts.filter((a) => a.status === 'maintenance').length;
 
   const columns: Column<AssetDevice>[] = [
     {
@@ -37,7 +41,7 @@ export const ForkliftsModule: React.FC = () => {
       accessor: (row) => (
         <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200">
           <User className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-          <span>{row.responsibleName || 'Operador de Galpão'}</span>
+          <span>{row.responsibleName || '—'}</span>
         </div>
       ),
     },
@@ -45,7 +49,7 @@ export const ForkliftsModule: React.FC = () => {
       header: 'Horas Trabalhadas (Horímetro)',
       accessor: (row) => (
         <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-          {row.telemetry.operatingHours || 1840}h
+          {row.telemetry.operatingHours != null ? `${row.telemetry.operatingHours}h` : '—'}
         </span>
       ),
     },
@@ -92,7 +96,7 @@ export const ForkliftsModule: React.FC = () => {
             Módulo de Empilhadeiras e Maquinário Interno
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Monitoramento de horímetro, impactos de colisão, login de operador e telemetria de bateria.
+            Monitoramento de horímetro, login de operador e telemetria de bateria.
           </p>
         </div>
 
@@ -120,12 +124,11 @@ export const ForkliftsModule: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard title="Empilhadeiras" value="18" icon={Forklift} variant="indigo" />
-        <StatCard title="Em Operação" value="14" icon={CheckCircle2} variant="emerald" />
-        <StatCard title="Paradas" value="2" icon={Clock} variant="slate" />
-        <StatCard title="Em Manutenção" value="1" icon={Wrench} variant="rose" />
-        <StatCard title="Impactos Detectados" value="0 Hoje" icon={Shield} variant="cyan" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard title="Empilhadeiras" value={String(forklifts.length)} icon={Forklift} variant="indigo" />
+        <StatCard title="Em Operação" value={String(inOperationCount)} icon={CheckCircle2} variant="emerald" />
+        <StatCard title="Paradas" value={String(stoppedCount)} icon={Clock} variant="slate" />
+        <StatCard title="Em Manutenção" value={String(maintenanceCount)} icon={Wrench} variant="rose" />
       </div>
 
       <DataTable

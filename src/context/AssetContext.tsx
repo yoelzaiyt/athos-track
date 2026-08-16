@@ -21,6 +21,8 @@ import {
   PointOfInterest,
   ProviderDevice,
   ProviderHealth,
+  SystemIntegration,
+  UserProfile,
 } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import {
@@ -41,6 +43,8 @@ import {
   rowToPoi,
   rowToProviderDevice,
   rowToProviderHealth,
+  rowToIntegration,
+  rowToUserProfile, userProfileToInsertRow, userProfileUpdatesToRow,
 } from '../lib/mappers';
 
 interface AssetContextType {
@@ -61,6 +65,8 @@ interface AssetContextType {
   pois: PointOfInterest[];
   providerDevices: ProviderDevice[];
   providerHealth: ProviderHealth | null;
+  integrations: SystemIntegration[];
+  users: UserProfile[];
   isLoading: boolean;
   selectedAsset: AssetDevice | null;
   searchQuery: string;
@@ -87,6 +93,9 @@ interface AssetContextType {
   addDriver: (driver: Driver) => void;
   updateDriver: (driverId: string, updates: Partial<Driver>) => void;
   deleteDriver: (driverId: string) => void;
+  addUserProfile: (user: Omit<UserProfile, 'id'>) => Promise<void>;
+  updateUserProfile: (userId: string, updates: Partial<UserProfile>) => Promise<void>;
+  deleteUserProfile: (userId: string) => Promise<void>;
   addMaintenanceRecord: (record: MaintenanceRecord) => void;
   updateMaintenanceRecord: (recordId: string, updates: Partial<MaintenanceRecord>) => void;
   deleteMaintenanceRecord: (recordId: string) => void;
@@ -148,6 +157,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [pois, setPois] = useState<PointOfInterest[]>([]);
   const [providerDevices, setProviderDevices] = useState<ProviderDevice[]>([]);
   const [providerHealth, setProviderHealth] = useState<ProviderHealth | null>(null);
+  const [integrations, setIntegrations] = useState<SystemIntegration[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<AssetDevice | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -165,6 +176,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         assetsRes, alertsRes, geofencesRes, shipmentsRes, driversRes, maintenanceRes,
         tripsRes, recoveriesRes, workOrdersRes, greylistRes, recoveryCasesRes,
         routeTemplatesRes, pairingsRes, trafficRes, poisRes, providerDevicesRes, providerHealthRes,
+        integrationsRes, usersRes,
       ] = await Promise.all([
         supabase.from('assets').select('*').order('created_at', { ascending: false }),
         supabase.from('system_alerts').select('*').order('created_at', { ascending: false }),
@@ -183,6 +195,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('points_of_interest').select('*'),
         supabase.from('provider_devices').select('*').order('discovered_at', { ascending: false }),
         supabase.from('provider_health').select('*').eq('provider', 'BRGPS').maybeSingle(),
+        supabase.from('system_integrations').select('*').order('created_at', { ascending: false }),
+        supabase.from('user_profiles').select('*').order('name'),
       ]);
 
       if (cancelled) return;
@@ -204,6 +218,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logError('pois', poisRes.error);
       logError('providerDevices', providerDevicesRes.error);
       logError('providerHealth', providerHealthRes.error);
+      logError('integrations', integrationsRes.error);
+      logError('users', usersRes.error);
 
       setAssets((assetsRes.data ?? []).map(rowToAsset));
       setAlerts((alertsRes.data ?? []).map(rowToAlert));
@@ -222,6 +238,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setPois((poisRes.data ?? []).map(rowToPoi));
       setProviderDevices((providerDevicesRes.data ?? []).map(rowToProviderDevice));
       setProviderHealth(providerHealthRes.data ? rowToProviderHealth(providerHealthRes.data) : null);
+      setIntegrations((integrationsRes.data ?? []).map(rowToIntegration));
+      setUsers((usersRes.data ?? []).map(rowToUserProfile));
       setIsLoading(false);
     })();
 
@@ -465,6 +483,31 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     logError('deleteDriver', error);
     if (error) return;
     setDrivers((prev) => prev.filter((d) => d.id !== driverId));
+  };
+
+  const addUserProfile = async (user: Omit<UserProfile, 'id'>) => {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .insert(userProfileToInsertRow(user))
+      .select()
+      .single();
+    logError('addUserProfile', error);
+    if (error || !data) return;
+    setUsers((prev) => [...prev, rowToUserProfile(data)].sort((a, b) => a.name.localeCompare(b.name)));
+  };
+
+  const updateUserProfile = async (userId: string, updates: Partial<UserProfile>) => {
+    const { error } = await supabase.from('user_profiles').update(userProfileUpdatesToRow(updates)).eq('id', userId);
+    logError('updateUserProfile', error);
+    if (error) return;
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
+  };
+
+  const deleteUserProfile = async (userId: string) => {
+    const { error } = await supabase.from('user_profiles').delete().eq('id', userId);
+    logError('deleteUserProfile', error);
+    if (error) return;
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
   const addMaintenanceRecord = async (record: MaintenanceRecord) => {
@@ -831,6 +874,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         pois,
         providerDevices,
         providerHealth,
+        integrations,
+        users,
         isLoading,
         selectedAsset,
         searchQuery,
@@ -857,6 +902,9 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addDriver,
         updateDriver,
         deleteDriver,
+        addUserProfile,
+        updateUserProfile,
+        deleteUserProfile,
         addMaintenanceRecord,
         updateMaintenanceRecord,
         deleteMaintenanceRecord,

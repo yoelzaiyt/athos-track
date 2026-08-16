@@ -42,6 +42,13 @@ export const CargoModule: React.FC = () => {
     (a) => a.category === 'cargo'
   );
 
+  const inTransitCount = shipments.filter((s) => s.status === 'em_transito').length;
+  const stoppedCount = shipments.filter((s) => s.status === 'parada').length;
+  const coldChainShipments = shipments.filter((s) => s.temperatureTarget);
+  const coldChainSealedPercent = coldChainShipments.length
+    ? Math.round((coldChainShipments.filter((s) => s.sealStatus === 'sealed').length / coldChainShipments.length) * 100)
+    : 0;
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'em_transito':
@@ -109,9 +116,9 @@ export const CargoModule: React.FC = () => {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard title="Cargas Monitoradas" value={shipments.length} icon={PackageCheck} variant="indigo" />
-        <StatCard title="Em Trânsito" value="2" icon={Truck} variant="emerald" />
-        <StatCard title="Parada Programada" value="1" icon={Clock} variant="amber" />
-        <StatCard title="Sensores Frio Ativos" value="100%" icon={Thermometer} variant="cyan" />
+        <StatCard title="Em Trânsito" value={String(inTransitCount)} icon={Truck} variant="emerald" />
+        <StatCard title="Parada Programada" value={String(stoppedCount)} icon={Clock} variant="amber" />
+        <StatCard title="Sensores Frio Lacrados" value={`${coldChainSealedPercent}%`} icon={Thermometer} variant="cyan" />
       </div>
 
       {/* Cargo Timeline Cards List */}

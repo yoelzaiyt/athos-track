@@ -17,6 +17,9 @@ export const AssetsModule: React.FC = () => {
     (a) => a.category === 'asset' || a.category === 'tag'
   );
 
+  const inOperationCount = assets.filter((a) => a.status === 'in_use' || a.status === 'moving' || a.status === 'online').length;
+  const movementAlertsCount = assets.filter((a) => a.status === 'out_of_geofence' || a.status === 'low_battery').length;
+
   const columns: Column<AssetDevice>[] = [
     {
       header: 'Ativo / Equipamento',
@@ -45,7 +48,7 @@ export const AssetsModule: React.FC = () => {
       accessor: (row) => (
         <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
           <User className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-          <span>{row.responsibleName || 'Engenharia de Manutenção'}</span>
+          <span>{row.responsibleName || '—'}</span>
         </div>
       ),
     },
@@ -54,7 +57,7 @@ export const AssetsModule: React.FC = () => {
       accessor: (row) => (
         <div>
           <div className="text-slate-700 dark:text-slate-200 font-medium">{row.unitName}</div>
-          <div className="text-[10px] text-slate-500 dark:text-slate-400">{row.geofenceName || 'Galpão Principal'}</div>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400">{row.geofenceName || '—'}</div>
         </div>
       ),
     },
@@ -124,10 +127,10 @@ export const AssetsModule: React.FC = () => {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard title="Ativos Monitorados" value="120" icon={Box} variant="indigo" />
-        <StatCard title="Em Operação" value="112" icon={CheckCircle2} variant="emerald" />
-        <StatCard title="Tags Associadas" value="500+" icon={Tag} variant="cyan" />
-        <StatCard title="Alertas de Movimentação" value="2" icon={AlertTriangle} variant="amber" />
+        <StatCard title="Ativos Monitorados" value={String(assets.length)} icon={Box} variant="indigo" />
+        <StatCard title="Em Operação" value={String(inOperationCount)} icon={CheckCircle2} variant="emerald" />
+        <StatCard title="Tags Associadas" value={String(assets.filter((a) => a.category === 'tag').length)} icon={Tag} variant="cyan" />
+        <StatCard title="Alertas de Movimentação" value={String(movementAlertsCount)} icon={AlertTriangle} variant="amber" />
       </div>
 
       <DataTable
