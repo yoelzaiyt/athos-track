@@ -12,10 +12,17 @@ import { restRouter } from './rest';
 import { startRealtimeBridge } from './realtime';
 
 const PORT = Number(process.env.PORT) || 4000;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+// CORS_ORIGIN aceita uma ou mais origins separadas por vírgula (ex:
+// "https://athos-track-delta.vercel.app,http://localhost:3000") para permitir
+// deploy de produção e desenvolvimento local contra a mesma API.
+const CORS_ORIGIN = (process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const corsOrigin = CORS_ORIGIN.length <= 1 ? CORS_ORIGIN[0] ?? '*' : CORS_ORIGIN;
 
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -23,7 +30,7 @@ app.use('/auth', authRouter);
 app.use('/rest', restRouter);
 
 const httpServer = createServer(app);
-const io = new SocketIOServer(httpServer, { cors: { origin: CORS_ORIGIN } });
+const io = new SocketIOServer(httpServer, { cors: { origin: corsOrigin } });
 
 async function main() {
   await startRealtimeBridge(io);
