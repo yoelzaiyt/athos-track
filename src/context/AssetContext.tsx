@@ -43,7 +43,7 @@ import {
   rowToPoi,
   rowToProviderDevice,
   rowToProviderHealth,
-  rowToIntegration,
+  rowToIntegration, integrationToInsertRow,
   rowToUserProfile, userProfileToInsertRow, userProfileUpdatesToRow,
 } from '../lib/mappers';
 
@@ -85,6 +85,7 @@ interface AssetContextType {
   updateGeofence: (geofenceId: string, updates: Partial<Geofence>) => void;
   deleteGeofence: (geofenceId: string) => void;
   addAsset: (asset: AssetDevice) => void;
+  addIntegration: (integration: Omit<SystemIntegration, 'id'>) => void;
   updateAsset: (assetId: string, updates: Partial<AssetDevice>) => void;
   deleteAsset: (assetId: string) => void;
   toggleVehicleBlock: (assetId: string) => void;
@@ -406,6 +407,13 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     logError('addAsset', error);
     if (error || !data) return;
     setAssets((prev) => [rowToAsset(data), ...prev]);
+  };
+
+  const addIntegration = async (integration: Omit<SystemIntegration, 'id'>) => {
+    const { data, error } = await supabase.from('system_integrations').insert(integrationToInsertRow(integration)).select().single();
+    logError('addIntegration', error);
+    if (error || !data) return;
+    setIntegrations((prev) => [rowToIntegration(data), ...prev]);
   };
 
   const updateAsset = async (assetId: string, updates: Partial<AssetDevice>) => {
@@ -894,6 +902,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateGeofence,
         deleteGeofence,
         addAsset,
+        addIntegration,
         updateAsset,
         deleteAsset,
         toggleVehicleBlock,

@@ -470,6 +470,9 @@ const INTEGRATION_FIELDS: FieldMap = [
 export const rowToIntegration = (row: Row): SystemIntegration =>
   ({ id: row.id, ...fromRow(row, INTEGRATION_FIELDS) } as SystemIntegration);
 
+export const integrationToInsertRow = (integration: Omit<SystemIntegration, 'id'>): Row =>
+  toRow(integration, INTEGRATION_FIELDS);
+
 // ===================== Pontos de Rota (breadcrumb histórico) =====================
 
 const ROUTE_POINT_FIELDS: FieldMap = [

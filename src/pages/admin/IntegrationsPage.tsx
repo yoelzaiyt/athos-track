@@ -1,9 +1,119 @@
-import React from 'react';
-import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2, Plus, X } from 'lucide-react';
 import { useAssets } from '../../context/AssetContext';
+import { SystemIntegration } from '../../types';
+
+const INTEGRATION_TYPES: SystemIntegration['type'][] = ['GT06', 'REST API', 'WebSocket', 'MQTT', 'Webhooks', 'BLE Gateway'];
+
+const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { addIntegration } = useAssets();
+  const [name, setName] = useState('');
+  const [type, setType] = useState<SystemIntegration['type']>('REST API');
+  const [endpointUrl, setEndpointUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await addIntegration({
+        name: name.trim(),
+        type,
+        status: 'testing',
+        lastPing: new Date().toISOString(),
+        activeDevicesCount: 0,
+        endpointUrl: endpointUrl.trim() || undefined,
+        apiKey: apiKey.trim() || undefined,
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Nova Integração / API</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Nome</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder="Ex: Gateway BLE Frota Sul"
+            className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Protocolo / Tipo</label>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as SystemIntegration['type'])}
+            className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+          >
+            {INTEGRATION_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Endpoint / URL do Broker</label>
+          <input
+            value={endpointUrl}
+            onChange={(e) => setEndpointUrl(e.target.value)}
+            placeholder="Ex: mqtt://broker.athostrack.io:1883"
+            className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Chave de API (opcional)</label>
+          <input
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Cole a chave de API fornecida pelo provedor"
+            className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !name.trim()}
+            className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            {saving ? 'Salvando...' : 'Salvar Integração'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
 
 export const IntegrationsPage: React.FC = () => {
   const { integrations } = useAssets();
+  const [showNewIntegration, setShowNewIntegration] = useState(false);
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -18,7 +128,16 @@ export const IntegrationsPage: React.FC = () => {
             Endpoints de ingestão para rastreadores GT06, gateways BLE e webhooks em nuvem.
           </p>
         </div>
+        <button
+          onClick={() => setShowNewIntegration(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Inserir API / Integração
+        </button>
       </div>
+
+      {showNewIntegration && <NewIntegrationModal onClose={() => setShowNewIntegration(false)} />}
 
       {/* Grid of Integration Protocol Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
