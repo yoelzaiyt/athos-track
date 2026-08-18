@@ -40,6 +40,7 @@ import {
   decodeBcdImei,
   decodeLocation,
   decodeHeartbeat,
+  decodeAlarm,
   PROTOCOL,
   type Gt06Frame,
 } from './protocol.ts';
@@ -150,8 +151,7 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       break;
     }
 
-    case PROTOCOL.HEARTBEAT:
-    case PROTOCOL.HEARTBEAT_ALT: {
+    case PROTOCOL.HEARTBEAT: {
       const hb = decodeHeartbeat(frame.content);
       console.log(
         `[gt06-listener] HEARTBEAT de ${remote} (imei=${session.imei ?? '?'})` +
@@ -168,9 +168,9 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
     }
 
     case PROTOCOL.LOCATION:
-    case PROTOCOL.LOCATION_LBS:
-    case PROTOCOL.LOCATION_LBS_ALT:
-    case PROTOCOL.LOCATION_LBS_EXT: {
+    case PROTOCOL.LOCATION_V3:
+    case PROTOCOL.LOCATION_4G:
+    case PROTOCOL.LOCATION_V4: {
       const loc = decodeLocation(frame.content);
       if (loc) {
         console.log(
@@ -186,6 +186,25 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
         packetType: `GPS_LOCATION (0x${frame.protocol.toString(16)})`,
         step: 'location_packet_received',
         status: loc ? 'success' : 'error',
+      });
+      break;
+    }
+
+    case PROTOCOL.ALARM: {
+      const alarm = decodeAlarm(frame.content);
+      if (alarm) {
+        console.log(
+          `[gt06-listener] ALARME de ${remote} (imei=${session.imei ?? '?'}) — ${alarm.alarmName} ` +
+          `lat=${alarm.latitude.toFixed(6)} lon=${alarm.longitude.toFixed(6)} bateria=${alarm.voltageLevel} sinal=${alarm.gsmSignal}`
+        );
+      } else {
+        console.warn(`[gt06-listener] pacote de alarme de ${remote} curto demais pra decodificar. raw=${frame.content.toString('hex')}`);
+      }
+      socket.write(buildAck(frame.protocol, frame.serial));
+      await insertEvent(session, {
+        packetType: `ALARM (0x16)${alarm ? ` ${alarm.alarmName}` : ''}`,
+        step: 'location_packet_received',
+        status: alarm ? 'success' : 'error',
       });
       break;
     }

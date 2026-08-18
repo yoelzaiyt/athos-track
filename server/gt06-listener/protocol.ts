@@ -7,15 +7,41 @@ export const START_STANDARD = Buffer.from([0x78, 0x78]);
 export const START_EXTENDED = Buffer.from([0x79, 0x79]);
 export const STOP = Buffer.from([0x0d, 0x0a]);
 
+// Valores conforme "GPS Tracker Communication Protocol" (doc do fornecedor,
+// seção 4.3): 0x12 é o pacote de localização clássico, 0x22/0xA0/0x32 são as
+// variantes V3/4G/V4 (mesmo cabeçalho GPS nos primeiros 18 bytes — só o que
+// vem depois de LBS/Cell ID muda de tamanho). 0x16 NÃO é localização: é o
+// pacote de Alarme (seção 5.3), que reaproveita o layout de localização mas
+// acrescenta status do terminal/bateria/sinal/código de alarme no final.
 export const PROTOCOL = {
   LOGIN: 0x01,
   LOCATION: 0x12,
-  LOCATION_LBS: 0x22,
-  LOCATION_LBS_ALT: 0x16,
-  LOCATION_LBS_EXT: 0x26,
+  LOCATION_V3: 0x22,
+  LOCATION_4G: 0xa0,
+  LOCATION_V4: 0x32,
   HEARTBEAT: 0x13,
-  HEARTBEAT_ALT: 0x23,
+  ALARM: 0x16,
+  RFID: 0x17,
 } as const;
+
+// Código de alarme (seção 5.3.1.17 "former bit") — presente no pacote 0x16.
+export const ALARM_CODE: Record<number, string> = {
+  0x00: 'normal',
+  0x01: 'sos',
+  0x02: 'power_cut',
+  0x03: 'shock',
+  0x06: 'overspeed',
+  0x09: 'geofence_exit',
+  0x0e: 'external_voltage_low',
+  0x13: 'device_removed',
+  0x14: 'door',
+  0x19: 'battery_low',
+  0xf0: 'harsh_acceleration',
+  0xf1: 'harsh_braking',
+  0xf2: 'collision',
+  0xfe: 'acc_on',
+  0xff: 'acc_off',
+};
 
 // Tabela CRC-16/X-25 (CRC-ITU), poly reverso 0x8408 — é o checksum que o GT06
 // usa em todo pacote (do byte de tamanho até o serial, exclusive o próprio CRC).
@@ -183,4 +209,38 @@ export interface DecodedHeartbeat {
 export function decodeHeartbeat(content: Buffer): DecodedHeartbeat | null {
   if (content.length < 3) return null;
   return { terminalInfo: content[0], voltageLevel: content[1], gsmSignal: content[2] };
+}
+
+export interface DecodedAlarm extends DecodedLocation {
+  terminalInfo: number;
+  voltageLevel: number;
+  gsmSignal: number;
+  alarmCode: number;
+  alarmName: string;
+}
+
+// Pacote 0x16 (seção 5.3): mesmos 18 bytes de GPS do pacote de localização,
+// seguidos por LBS (length + MCC + MNC + LAC + CellID = 1+2+1+2+3 = 9 bytes)
+// e então status (terminal info + bateria + sinal GSM + alarme/idioma = 5
+// bytes). O byte de idioma (último) é ignorado aqui — só o alarme importa.
+export function decodeAlarm(content: Buffer): DecodedAlarm | null {
+  const location = decodeLocation(content);
+  if (!location) return null;
+
+  const statusOffset = 18 + 9; // GPS(18) + LBS(9)
+  if (content.length < statusOffset + 3) return null;
+
+  const terminalInfo = content[statusOffset];
+  const voltageLevel = content[statusOffset + 1];
+  const gsmSignal = content[statusOffset + 2];
+  const alarmCode = content.length > statusOffset + 3 ? content[statusOffset + 3] : 0x00;
+
+  return {
+    ...location,
+    terminalInfo,
+    voltageLevel,
+    gsmSignal,
+    alarmCode,
+    alarmName: ALARM_CODE[alarmCode] ?? `unknown_0x${alarmCode.toString(16)}`,
+  };
 }
