@@ -469,6 +469,7 @@ export const userProfileUpdatesToRow = (updates: Partial<UserProfile>): Row =>
 const INTEGRATION_FIELDS: FieldMap = [
   ['name', 'name'], ['type', 'type'], ['status', 'status'], ['lastPing', 'last_ping'],
   ['activeDevicesCount', 'active_devices_count'], ['endpointUrl', 'endpoint_url'], ['apiKey', 'api_key'],
+  ['provider', 'provider'],
 ];
 
 export const rowToIntegration = (row: Row): SystemIntegration =>

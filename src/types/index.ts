@@ -539,6 +539,10 @@ export interface SystemIntegration {
   activeDevicesCount: number;
   endpointUrl?: string;
   apiKey?: string;
+  // Amarra a integração ao valor livre usado em AssetDevice.provider (ex:
+  // "BRGPS"). Usado para calcular activeDevicesCount a partir dos ativos
+  // reais em vez de manter um contador manual desatualizado.
+  provider?: string;
 }
 
 // ===================== Ordens de Serviço (Instalação/Manutenção Técnica) =====================

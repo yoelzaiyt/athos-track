@@ -75,6 +75,10 @@ function collectSqlFiles(): { label: string; sql: string }[] {
     label: '03_api_keys.sql',
     sql: readFileSync(path.join(__dirname, '03_api_keys.sql'), 'utf-8'),
   });
+  files.push({
+    label: '04_integration_provider.sql',
+    sql: readFileSync(path.join(__dirname, '04_integration_provider.sql'), 'utf-8'),
+  });
 
   return files;
 }

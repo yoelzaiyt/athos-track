@@ -1,8 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2, Plus, X, Copy, Ban } from 'lucide-react';
 import { useAssets } from '../../context/AssetContext';
-import { SystemIntegration } from '../../types';
+import { SystemIntegration, AssetDevice } from '../../types';
 import { apiFetch } from '../../lib/supabaseClient';
+
+// Conta dispositivos conectados de verdade a partir dos ativos reais, em vez
+// de um contador manual que nunca era atualizado. Se a integração declara um
+// provedor (ex: "BRGPS"), conta por asset.provider; senão, cai pra contar por
+// protocolo de comunicação igual ao tipo da integração.
+function countConnectedDevices(integration: SystemIntegration, assets: AssetDevice[]): number {
+  if (integration.provider) {
+    return assets.filter((a) => a.provider === integration.provider).length;
+  }
+  return assets.filter((a) => a.protocol === integration.type).length;
+}
 
 interface ApiKeyRow {
   id: string;
@@ -25,6 +36,7 @@ const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemInte
   const [status, setStatus] = useState<SystemIntegration['status']>(editing?.status ?? 'testing');
   const [endpointUrl, setEndpointUrl] = useState(editing?.endpointUrl ?? '');
   const [apiKey, setApiKey] = useState(editing?.apiKey ?? '');
+  const [provider, setProvider] = useState(editing?.provider ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +51,7 @@ const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemInte
           status,
           endpointUrl: endpointUrl.trim() || undefined,
           apiKey: apiKey.trim() || undefined,
+          provider: provider.trim() || undefined,
         });
       } else {
         await addIntegration({
@@ -49,6 +62,7 @@ const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemInte
           activeDevicesCount: 0,
           endpointUrl: endpointUrl.trim() || undefined,
           apiKey: apiKey.trim() || undefined,
+          provider: provider.trim() || undefined,
         });
       }
       onClose();
@@ -127,6 +141,19 @@ const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemInte
             placeholder="Cole a chave de API fornecida pelo provedor"
             className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
           />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Provedor (opcional)</label>
+          <input
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            placeholder="Ex: BRGPS — usado para contar dispositivos conectados de verdade"
+            className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+          />
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Deve bater com o valor cadastrado no ativo (ex: dispositivos vinculados via BRGPS). Sem isso, "Dispositivos Conectados" conta pelo protocolo de comunicação.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -345,7 +372,7 @@ const ApiKeysSection: React.FC = () => {
 };
 
 export const IntegrationsPage: React.FC = () => {
-  const { integrations, deleteIntegration } = useAssets();
+  const { integrations, assets, deleteIntegration } = useAssets();
   const [showNewIntegration, setShowNewIntegration] = useState(false);
   const [editingIntegration, setEditingIntegration] = useState<SystemIntegration | null>(null);
 
@@ -422,7 +449,7 @@ export const IntegrationsPage: React.FC = () => {
 
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-800/80">
               <span>Dispositivos Conectados:</span>
-              <strong className="text-slate-700 dark:text-slate-200 font-mono">{int.activeDevicesCount}</strong>
+              <strong className="text-slate-700 dark:text-slate-200 font-mono">{countConnectedDevices(int, assets)}</strong>
             </div>
 
             <div className="flex items-center justify-end gap-1.5 pt-1">
