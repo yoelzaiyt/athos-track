@@ -374,10 +374,14 @@ const CLIENT_FIELDS: FieldMap = [
 
 export const rowToClient = (row: Row): CompanyClient => ({ id: row.id, ...fromRow(row, CLIENT_FIELDS) } as CompanyClient);
 
+export const clientToInsertRow = (client: Omit<CompanyClient, 'id'>): Row => toRow(client, CLIENT_FIELDS);
+
 const UNIT_FIELDS: FieldMap = [
   ['clientId', 'client_id'], ['name', 'name'], ['city', 'city'], ['state', 'state'],
   ['address', 'address'], ['assetsCount', 'assets_count'], ['status', 'status'],
 ];
+
+export const unitToInsertRow = (unit: Omit<CompanyUnit, 'id'>): Row => toRow(unit, UNIT_FIELDS);
 
 // ===================== Homologação de Dispositivos (GT06) =====================
 

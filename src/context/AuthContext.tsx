@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
 import { supabase, type Session } from '../lib/supabaseClient';
-import { rowToClient, rowToUnit } from '../lib/mappers';
+import { rowToClient, rowToUnit, clientToInsertRow, unitToInsertRow } from '../lib/mappers';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -12,6 +12,8 @@ interface AuthContextType {
   selectedUnitId: string; // 'all' or unit ID
   availableClients: CompanyClient[];
   availableUnits: CompanyUnit[];
+  addClient: (client: Omit<CompanyClient, 'id'>) => Promise<CompanyClient | null>;
+  addUnit: (unit: Omit<CompanyUnit, 'id'>) => Promise<CompanyUnit | null>;
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
   login: (email: string, pass: string) => Promise<boolean>;
@@ -178,6 +180,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const addClient = async (client: Omit<CompanyClient, 'id'>): Promise<CompanyClient | null> => {
+    const { data, error } = await supabase.from('company_clients').insert(clientToInsertRow(client)).select().single();
+    if (error || !data) {
+      console.error('[AuthContext] addClient failed:', error?.message);
+      return null;
+    }
+    const created = rowToClient(data);
+    setClients((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    return created;
+  };
+
+  const addUnit = async (unit: Omit<CompanyUnit, 'id'>): Promise<CompanyUnit | null> => {
+    const { data, error } = await supabase.from('company_units').insert(unitToInsertRow(unit)).select().single();
+    if (error || !data) {
+      console.error('[AuthContext] addUnit failed:', error?.message);
+      return null;
+    }
+    const created = rowToUnit(data);
+    setUnits((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    return created;
+  };
+
   const availableClients = clients;
   const availableUnits =
     selectedClientId === 'all' ? units : units.filter((u) => u.clientId === selectedClientId);
@@ -216,6 +240,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedUnitId,
         availableClients,
         availableUnits,
+        addClient,
+        addUnit,
         toggleTheme,
         setTheme,
         login,
