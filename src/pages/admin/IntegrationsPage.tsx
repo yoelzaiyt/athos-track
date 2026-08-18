@@ -15,12 +15,16 @@ interface ApiKeyRow {
 
 const INTEGRATION_TYPES: SystemIntegration['type'][] = ['GT06', 'REST API', 'WebSocket', 'MQTT', 'Webhooks', 'BLE Gateway'];
 
-const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { addIntegration } = useAssets();
-  const [name, setName] = useState('');
-  const [type, setType] = useState<SystemIntegration['type']>('REST API');
-  const [endpointUrl, setEndpointUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
+const INTEGRATION_STATUSES: SystemIntegration['status'][] = ['active', 'testing', 'inactive'];
+const STATUS_LABEL: Record<SystemIntegration['status'], string> = { active: 'Ativa', testing: 'Em Teste', inactive: 'Inativa' };
+
+const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemIntegration | null }> = ({ onClose, editing }) => {
+  const { addIntegration, updateIntegration } = useAssets();
+  const [name, setName] = useState(editing?.name ?? '');
+  const [type, setType] = useState<SystemIntegration['type']>(editing?.type ?? 'REST API');
+  const [status, setStatus] = useState<SystemIntegration['status']>(editing?.status ?? 'testing');
+  const [endpointUrl, setEndpointUrl] = useState(editing?.endpointUrl ?? '');
+  const [apiKey, setApiKey] = useState(editing?.apiKey ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,15 +32,25 @@ const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await addIntegration({
-        name: name.trim(),
-        type,
-        status: 'testing',
-        lastPing: new Date().toISOString(),
-        activeDevicesCount: 0,
-        endpointUrl: endpointUrl.trim() || undefined,
-        apiKey: apiKey.trim() || undefined,
-      });
+      if (editing) {
+        await updateIntegration(editing.id, {
+          name: name.trim(),
+          type,
+          status,
+          endpointUrl: endpointUrl.trim() || undefined,
+          apiKey: apiKey.trim() || undefined,
+        });
+      } else {
+        await addIntegration({
+          name: name.trim(),
+          type,
+          status: 'testing',
+          lastPing: new Date().toISOString(),
+          activeDevicesCount: 0,
+          endpointUrl: endpointUrl.trim() || undefined,
+          apiKey: apiKey.trim() || undefined,
+        });
+      }
       onClose();
     } finally {
       setSaving(false);
@@ -50,7 +64,7 @@ const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-5 space-y-4"
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Nova Integração / API</h3>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">{editing ? 'Editar Integração / API' : 'Nova Integração / API'}</h3>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <X className="w-4 h-4" />
           </button>
@@ -79,6 +93,21 @@ const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             ))}
           </select>
         </div>
+
+        {editing && (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as SystemIntegration['status'])}
+              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40"
+            >
+              {INTEGRATION_STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="space-y-1">
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Endpoint / URL do Broker</label>
@@ -113,7 +142,7 @@ const NewIntegrationModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             disabled={saving || !name.trim()}
             className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
           >
-            {saving ? 'Salvando...' : 'Salvar Integração'}
+            {saving ? 'Salvando...' : editing ? 'Salvar Alterações' : 'Salvar Integração'}
           </button>
         </div>
       </form>
@@ -316,8 +345,16 @@ const ApiKeysSection: React.FC = () => {
 };
 
 export const IntegrationsPage: React.FC = () => {
-  const { integrations } = useAssets();
+  const { integrations, deleteIntegration } = useAssets();
   const [showNewIntegration, setShowNewIntegration] = useState(false);
+  const [editingIntegration, setEditingIntegration] = useState<SystemIntegration | null>(null);
+
+  const handleDelete = (integration: SystemIntegration) => {
+    if (window.confirm(`Remover a integração "${integration.name}"? Esta ação não pode ser desfeita.`)) {
+      deleteIntegration(integration.id);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -341,7 +378,10 @@ export const IntegrationsPage: React.FC = () => {
         </button>
       </div>
 
-      {showNewIntegration && <NewIntegrationModal onClose={() => setShowNewIntegration(false)} />}
+      {showNewIntegration && <IntegrationFormModal onClose={() => setShowNewIntegration(false)} />}
+      {editingIntegration && (
+        <IntegrationFormModal editing={editingIntegration} onClose={() => setEditingIntegration(null)} />
+      )}
 
       {/* Grid of Integration Protocol Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -383,6 +423,21 @@ export const IntegrationsPage: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-800/80">
               <span>Dispositivos Conectados:</span>
               <strong className="text-slate-700 dark:text-slate-200 font-mono">{int.activeDevicesCount}</strong>
+            </div>
+
+            <div className="flex items-center justify-end gap-1.5 pt-1">
+              <button
+                onClick={() => setEditingIntegration(int)}
+                className="px-2 py-1 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+              >
+                Editar
+              </button>
+              <button
+                onClick={() => handleDelete(int)}
+                className="px-2 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+              >
+                Excluir
+              </button>
             </div>
           </div>
         ))}

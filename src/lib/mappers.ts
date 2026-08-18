@@ -477,6 +477,9 @@ export const rowToIntegration = (row: Row): SystemIntegration =>
 export const integrationToInsertRow = (integration: Omit<SystemIntegration, 'id'>): Row =>
   toRow(integration, INTEGRATION_FIELDS);
 
+export const integrationUpdatesToRow = (updates: Partial<SystemIntegration>): Row =>
+  toRowPartial(updates, INTEGRATION_FIELDS);
+
 // ===================== Pontos de Rota (breadcrumb histórico) =====================
 
 const ROUTE_POINT_FIELDS: FieldMap = [
