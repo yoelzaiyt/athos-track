@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { authRouter } from './routes-auth';
 import { restRouter } from './rest';
+import { apiKeysRouter } from './apiKeys';
 import { startRealtimeBridge } from './realtime';
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -28,6 +29,7 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth', authRouter);
 app.use('/rest', restRouter);
+app.use('/api-keys', apiKeysRouter);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: corsOrigin } });

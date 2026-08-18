@@ -71,6 +71,10 @@ function collectSqlFiles(): { label: string; sql: string }[] {
     label: '02_realtime_notify.sql',
     sql: readFileSync(path.join(__dirname, '02_realtime_notify.sql'), 'utf-8'),
   });
+  files.push({
+    label: '03_api_keys.sql',
+    sql: readFileSync(path.join(__dirname, '03_api_keys.sql'), 'utf-8'),
+  });
 
   return files;
 }
