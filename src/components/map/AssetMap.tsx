@@ -875,6 +875,8 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       workshop: { color: '#8b5cf6', label: 'Oficina Mecânica' },
       yard: { color: '#06b6d4', label: 'Pátio' },
       parking: { color: '#64748b', label: 'Estacionamento' },
+      water_point: { color: '#0ea5e9', label: 'Ponto de Água' },
+      feed_trough: { color: '#a16207', label: 'Cocho' },
     };
 
     pois.forEach((poi) => {

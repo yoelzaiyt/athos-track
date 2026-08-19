@@ -88,9 +88,11 @@ const SUBCATEGORY_OPTIONS: Record<AssetCategory, { value: AssetSubcategory; labe
   ],
   tag: [{ value: 'tag', label: 'Tag BLE Genérica' }],
   agro: [
-    { value: 'cattle', label: 'Gado' },
-    { value: 'horse', label: 'Cavalo' },
+    { value: 'cattle', label: 'Gado (Bovino)' },
+    { value: 'horse', label: 'Cavalo (Equino)' },
     { value: 'sheep', label: 'Ovino' },
+    { value: 'goat', label: 'Caprino' },
+    { value: 'buffalo', label: 'Búfalo' },
     { value: 'tractor', label: 'Trator' },
   ],
 };

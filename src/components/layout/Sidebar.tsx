@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
     { key: 'empilhadeiras', label: 'Empilhadeiras', icon: Forklift },
     { key: 'bicicletas', label: 'Bicicletas', icon: Bike },
     { key: 'tags', label: 'Tags & Dispositivos', icon: Tag },
-    { key: 'agro', label: 'Agro', icon: Sprout },
+    { key: 'agro', label: 'ATHOS Agro Track', icon: Sprout },
     { key: 'recuperacao_campo', label: 'Central de Recuperação de Campo', icon: Navigation },
   ];
 

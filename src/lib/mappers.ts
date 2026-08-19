@@ -11,6 +11,7 @@ import type {
   Geofence,
   CargoShipment,
   Driver,
+  Animal,
   MaintenanceRecord,
   TripRecord,
   CartRecovery,
@@ -180,6 +181,22 @@ const DRIVER_FIELDS: FieldMap = [
 export const rowToDriver = (row: Row): Driver => ({ id: row.id, ...fromRow(row, DRIVER_FIELDS) } as Driver);
 export const driverToInsertRow = (d: Driver): Row => toRow(d, DRIVER_FIELDS);
 export const driverUpdatesToRow = (updates: Partial<Driver>): Row => toRowPartial(updates, DRIVER_FIELDS);
+
+// ===================== Animals (ATHOS AGRO TRACK) =====================
+
+const ANIMAL_FIELDS: FieldMap = [
+  ['athosTagCode', 'athos_tag_code'], ['earTagId', 'ear_tag_id'], ['name', 'name'],
+  ['species', 'species'], ['breed', 'breed'], ['sex', 'sex'], ['birthDate', 'birth_date'],
+  ['weightKg', 'weight_kg'], ['batchName', 'batch_name'], ['clientId', 'client_id'],
+  ['unitId', 'unit_id'], ['unitName', 'unit_name'], ['ownerName', 'owner_name'],
+  ['status', 'status'], ['assignedDeviceId', 'assigned_device_id'],
+  ['assignedDeviceCode', 'assigned_device_code'], ['currentGeofenceId', 'current_geofence_id'],
+  ['currentGeofenceName', 'current_geofence_name'],
+];
+
+export const rowToAnimal = (row: Row): Animal => ({ id: row.id, ...fromRow(row, ANIMAL_FIELDS) } as Animal);
+export const animalToInsertRow = (a: Animal): Row => toRow(a, ANIMAL_FIELDS);
+export const animalUpdatesToRow = (updates: Partial<Animal>): Row => toRowPartial(updates, ANIMAL_FIELDS);
 
 // ===================== Maintenance Records =====================
 

@@ -7,6 +7,7 @@ import {
   AssetCategory,
   AssetStatus,
   Driver,
+  Animal,
   MaintenanceRecord,
   TripRecord,
   CartRecovery,
@@ -29,6 +30,7 @@ import {
   rowToAsset, assetToInsertRow, assetUpdatesToRow,
   rowToGeofence, geofenceToInsertRow, geofenceUpdatesToRow,
   rowToDriver, driverToInsertRow, driverUpdatesToRow,
+  rowToAnimal, animalToInsertRow, animalUpdatesToRow,
   rowToMaintenance, maintenanceToInsertRow, maintenanceUpdatesToRow,
   rowToRouteTemplate, routeTemplateToInsertRow,
   rowToTrip, tripToInsertRow, tripUpdatesToRow,
@@ -53,6 +55,7 @@ interface AssetContextType {
   geofences: Geofence[];
   shipments: CargoShipment[];
   drivers: Driver[];
+  animals: Animal[];
   maintenanceRecords: MaintenanceRecord[];
   trips: TripRecord[];
   recoveries: CartRecovery[];
@@ -93,6 +96,10 @@ interface AssetContextType {
   addDriver: (driver: Driver) => void;
   updateDriver: (driverId: string, updates: Partial<Driver>) => void;
   deleteDriver: (driverId: string) => void;
+  addAnimal: (animal: Animal) => void;
+  updateAnimal: (animalId: string, updates: Partial<Animal>) => void;
+  deleteAnimal: (animalId: string) => void;
+  getFilteredAnimals: (clientId?: string, unitId?: string) => Animal[];
   addUserProfile: (user: Omit<UserProfile, 'id'>) => Promise<void>;
   updateUserProfile: (userId: string, updates: Partial<UserProfile>) => Promise<void>;
   deleteUserProfile: (userId: string) => Promise<void>;
@@ -145,6 +152,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [shipments, setShipments] = useState<CargoShipment[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [animals, setAnimals] = useState<Animal[]>([]);
   const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [recoveries, setRecoveries] = useState<CartRecovery[]>([]);
@@ -173,7 +181,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     (async () => {
       const [
-        assetsRes, alertsRes, geofencesRes, shipmentsRes, driversRes, maintenanceRes,
+        assetsRes, alertsRes, geofencesRes, shipmentsRes, driversRes, animalsRes, maintenanceRes,
         tripsRes, recoveriesRes, workOrdersRes, greylistRes, recoveryCasesRes,
         routeTemplatesRes, pairingsRes, trafficRes, poisRes, providerDevicesRes, providerHealthRes,
         integrationsRes, usersRes,
@@ -183,6 +191,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('geofences').select('*').order('created_at', { ascending: false }),
         supabase.from('cargo_shipments').select('*').order('created_at', { ascending: false }),
         supabase.from('drivers').select('*').order('created_at', { ascending: false }),
+        supabase.from('animals').select('*').order('created_at', { ascending: false }),
         supabase.from('maintenance_records').select('*').order('created_at', { ascending: false }),
         supabase.from('trip_records').select('*').order('created_at', { ascending: false }),
         supabase.from('cart_recoveries').select('*').order('timestamp', { ascending: false }),
@@ -206,6 +215,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logError('geofences', geofencesRes.error);
       logError('shipments', shipmentsRes.error);
       logError('drivers', driversRes.error);
+      logError('animals', animalsRes.error);
       logError('maintenanceRecords', maintenanceRes.error);
       logError('trips', tripsRes.error);
       logError('recoveries', recoveriesRes.error);
@@ -226,6 +236,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setGeofences((geofencesRes.data ?? []).map(rowToGeofence));
       setShipments((shipmentsRes.data ?? []).map(rowToShipment));
       setDrivers((driversRes.data ?? []).map(rowToDriver));
+      setAnimals((animalsRes.data ?? []).map(rowToAnimal));
       setMaintenanceRecords((maintenanceRes.data ?? []).map(rowToMaintenance));
       setTrips((tripsRes.data ?? []).map(rowToTrip));
       setRecoveries((recoveriesRes.data ?? []).map(rowToRecovery));
@@ -483,6 +494,43 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     logError('deleteDriver', error);
     if (error) return;
     setDrivers((prev) => prev.filter((d) => d.id !== driverId));
+  };
+
+  const addAnimal = async (animal: Animal) => {
+    const { data, error } = await supabase.from('animals').insert(animalToInsertRow(animal)).select().single();
+    logError('addAnimal', error);
+    if (error || !data) return;
+    setAnimals((prev) => [rowToAnimal(data), ...prev]);
+  };
+
+  const updateAnimal = async (animalId: string, updates: Partial<Animal>) => {
+    const { error } = await supabase.from('animals').update(animalUpdatesToRow(updates)).eq('id', animalId);
+    logError('updateAnimal', error);
+    if (error) return;
+    setAnimals((prev) => prev.map((a) => (a.id === animalId ? { ...a, ...updates } : a)));
+  };
+
+  const deleteAnimal = async (animalId: string) => {
+    const { error } = await supabase.from('animals').delete().eq('id', animalId);
+    logError('deleteAnimal', error);
+    if (error) return;
+    setAnimals((prev) => prev.filter((a) => a.id !== animalId));
+  };
+
+  const getFilteredAnimals = (clientId = 'all', unitId = 'all'): Animal[] => {
+    return animals.filter((animal) => {
+      if (clientId !== 'all' && animal.clientId !== clientId) return false;
+      if (unitId !== 'all' && animal.unitId !== unitId) return false;
+      if (searchQuery.trim().length > 0) {
+        const query = searchQuery.toLowerCase();
+        const matchName = animal.name?.toLowerCase().includes(query);
+        const matchTag = animal.athosTagCode.toLowerCase().includes(query);
+        const matchEarTag = animal.earTagId?.toLowerCase().includes(query);
+        const matchBatch = animal.batchName?.toLowerCase().includes(query);
+        if (!matchName && !matchTag && !matchEarTag && !matchBatch) return false;
+      }
+      return true;
+    });
   };
 
   const addUserProfile = async (user: Omit<UserProfile, 'id'>) => {
@@ -862,6 +910,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         geofences,
         shipments,
         drivers,
+        animals,
         maintenanceRecords,
         trips,
         recoveries,
@@ -902,6 +951,9 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addDriver,
         updateDriver,
         deleteDriver,
+        addAnimal,
+        updateAnimal,
+        deleteAnimal,
         addUserProfile,
         updateUserProfile,
         deleteUserProfile,
@@ -930,6 +982,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         linkProviderDeviceToAsset,
         unlinkProviderDevice,
         getFilteredAssets,
+        getFilteredAnimals,
         getStats,
       }}
     >

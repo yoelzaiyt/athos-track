@@ -15,7 +15,7 @@ import { requireAuth } from './auth';
 
 // Mesma lista de tabelas hoje consultadas via supabase-js em src/context/*.tsx.
 const ALLOWED_TABLES = new Set([
-  'assets', 'system_alerts', 'geofences', 'cargo_shipments', 'drivers',
+  'assets', 'system_alerts', 'geofences', 'cargo_shipments', 'drivers', 'animals',
   'maintenance_records', 'trip_records', 'cart_recoveries', 'work_orders',
   'greylist_entries', 'asset_recovery_cases', 'route_templates', 'asset_pairings',
   'traffic_segments', 'points_of_interest', 'provider_devices', 'provider_health',

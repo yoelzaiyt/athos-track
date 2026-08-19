@@ -75,6 +75,8 @@ export type AssetSubcategory =
   | 'cattle'
   | 'horse'
   | 'sheep'
+  | 'goat'
+  | 'buffalo'
   | 'tractor'
   | 'notebook'
   | 'generator'
@@ -235,6 +237,12 @@ export interface AssetDevice {
   // MAC do dispositivo — seção 32: não exibir cheio no frontend padrão, só
   // para usuários técnicos autorizados.
   mac?: string;
+  // Perfil de frequência de rastreamento desejado (ATHOS AGRO TRACK e futuros
+  // módulos com conector de escrita). Nesta fase é só a preferência do
+  // operador — aplicar de fato no hardware depende do canal de comando do
+  // conector do fabricante (ver docs/integrations/F30_GPSONE.md), que ainda
+  // não existe neste projeto. Não assumir que já está em vigor no device.
+  trackingProfile?: 'economy' | 'normal' | 'intensive' | 'emergency';
 }
 
 // ===================== Dispositivos de provedores externos (BRGPS etc.) =====================
@@ -320,6 +328,42 @@ export interface Driver {
     sharpTurn: number;
     excessiveIdlingMinutes: number;
   };
+}
+
+// ===================== ATHOS AGRO TRACK — Animal =====================
+// Entidade separada do dispositivo/coleira (mesmo padrão de Driver acima,
+// que já é separado do veículo via assignedVehicleId). Trocar a coleira de
+// um animal preserva o histórico dele: basta apontar assignedDeviceId pra
+// um novo AssetDevice, o Animal.id não muda.
+
+export type AnimalSpecies = 'bovino' | 'ovino' | 'caprino' | 'equino' | 'outro';
+export type AnimalSex = 'macho' | 'femea';
+export type AnimalStatus = 'active' | 'sold' | 'deceased' | 'transferred';
+
+export interface Animal {
+  id: string;
+  athosTagCode: string; // ID ATHOS interno
+  earTagId?: string; // brinco de identificação
+  name?: string;
+  species: AnimalSpecies;
+  breed?: string;
+  sex: AnimalSex;
+  birthDate?: string;
+  weightKg?: number;
+  batchName?: string; // lote
+  clientId: string;
+  unitId: string;
+  unitName: string; // fazenda
+  ownerName?: string;
+  status: AnimalStatus;
+  // Coleira/dispositivo de rastreamento vinculado no momento (opcional —
+  // um animal pode ficar sem coleira entre trocas/manutenção).
+  assignedDeviceId?: string;
+  assignedDeviceCode?: string;
+  // Denormalizado a partir da geofence em que o dispositivo vinculado está
+  // atualmente contido, pra exibição rápida sem recalcular no card.
+  currentGeofenceId?: string;
+  currentGeofenceName?: string;
 }
 
 export type MaintenanceType = 'preventiva' | 'corretiva' | 'revisao' | 'pneus' | 'oleo';
@@ -509,7 +553,7 @@ export interface TrafficSegment {
 
 // ===================== Pontos de Interesse (mock) =====================
 
-export type POICategory = 'fuel_station' | 'workshop' | 'yard' | 'parking';
+export type POICategory = 'fuel_station' | 'workshop' | 'yard' | 'parking' | 'water_point' | 'feed_trough';
 
 export interface PointOfInterest {
   id: string;

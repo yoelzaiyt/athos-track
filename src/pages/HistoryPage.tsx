@@ -6,16 +6,48 @@ import { RoutePoint } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import { rowToRoutePoint } from '../lib/mappers';
 
+type RangePreset = 'today' | '24h' | '7d' | '30d' | 'custom';
+
+const PRESET_OPTIONS: { value: RangePreset; label: string }[] = [
+  { value: 'today', label: 'Hoje' },
+  { value: '24h', label: 'Últimas 24h' },
+  { value: '7d', label: '7 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: 'custom', label: 'Personalizado' },
+];
+
+function todayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Resolve o preset em timestamps ISO reais (não só data) para a query — "24h"
+// e "hoje" só se distinguem de verdade se a query trabalhar com hora exata,
+// não com o intervalo de dia inteiro usado pelo modo "Personalizado".
+function resolvePresetRange(preset: RangePreset, startDate: string, endDate: string): { fromIso: string; toIso: string } {
+  const now = new Date();
+  if (preset === '24h') return { fromIso: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(), toIso: now.toISOString() };
+  if (preset === '7d') return { fromIso: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(), toIso: now.toISOString() };
+  if (preset === '30d') return { fromIso: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(), toIso: now.toISOString() };
+  if (preset === 'today') {
+    const today = todayDateString();
+    return { fromIso: `${today}T00:00:00`, toIso: `${today}T23:59:59` };
+  }
+  return { fromIso: `${startDate}T00:00:00`, toIso: `${endDate}T23:59:59` };
+}
+
 export const HistoryPage: React.FC = () => {
   const { assets } = useAssets();
   const [selectedAssetId, setSelectedAssetId] = useState(assets[0]?.id || '');
-  const [startDate, setStartDate] = useState('2026-08-10');
-  const [endDate, setEndDate] = useState('2026-08-10');
+  const [preset, setPreset] = useState<RangePreset>('today');
+  const [startDate, setStartDate] = useState(todayDateString());
+  const [endDate, setEndDate] = useState(todayDateString());
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
 
   const targetAsset = assets.find((a) => a.id === selectedAssetId) || assets[0];
+  const { fromIso, toIso } = resolvePresetRange(preset, startDate, endDate);
 
-  // Breadcrumb real de asset_route_points, filtrado pelo intervalo de datas selecionado.
+  // Breadcrumb real de asset_route_points, filtrado pelo intervalo selecionado
+  // (preset ou datas customizadas — ver resolvePresetRange acima).
   useEffect(() => {
     if (!targetAsset) {
       setRoutePoints([]);
@@ -27,8 +59,8 @@ export const HistoryPage: React.FC = () => {
         .from('asset_route_points')
         .select('*')
         .eq('asset_id', targetAsset.id)
-        .gte('recorded_at', `${startDate}T00:00:00`)
-        .lte('recorded_at', `${endDate}T23:59:59`)
+        .gte('recorded_at', fromIso)
+        .lte('recorded_at', toIso)
         .order('recorded_at', { ascending: true });
       if (cancelled) return;
       if (error) console.error('[HistoryPage] Failed to load route points:', error.message);
@@ -37,7 +69,7 @@ export const HistoryPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [targetAsset?.id, startDate, endDate]);
+  }, [targetAsset?.id, fromIso, toIso]);
 
   // Paradas derivadas dos pontos com velocidade 0 marcados com evento (não há
   // tabela dedicada de paradas — cada trecho parado vira um marcador no mapa).
@@ -69,41 +101,66 @@ export const HistoryPage: React.FC = () => {
       </div>
 
       {/* Selector and Date Controls Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end shadow-sm">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Selecione o Dispositivo</label>
-          <select
-            value={selectedAssetId}
-            onChange={(e) => setSelectedAssetId(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-cyan-500/50"
-          >
-            {assets.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.code})
-              </option>
-            ))}
-          </select>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-4 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Selecione o Dispositivo</label>
+            <select
+              value={selectedAssetId}
+              onChange={(e) => setSelectedAssetId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-cyan-500/50"
+            >
+              {assets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Período</label>
+            <div className="flex flex-wrap gap-2">
+              {PRESET_OPTIONS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPreset(p.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                    preset === p.value
+                      ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40'
+                      : 'bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Data Inicial</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none"
-          />
-        </div>
+        {preset === 'custom' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Data Inicial</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none"
+              />
+            </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Data Final</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none"
-          />
-        </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Data Final</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Grid: Universal AssetMap with Replay Overlay */}

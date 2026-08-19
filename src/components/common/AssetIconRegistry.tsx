@@ -143,6 +143,16 @@ export function getAssetSVGPath(category: AssetCategory, subcategory?: string | 
     return `<path d="M8 8a3.5 3.5 0 0 1 7 0 3 3 0 0 1 3 3 3 3 0 0 1-1 5.8V19h-2v-2h-6v2H7v-2.2A3 3 0 0 1 5 11a3 3 0 0 1 8-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 10l3 1-1 2-2-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
   }
 
+  if (sub === 'goat' || sub === 'caprino' || sub === 'cabra' || sub === 'bode') {
+    // Goat / Caprino SVG
+    return `<path d="M9 9a3 3 0 0 1 6 0v1a3 3 0 0 1 3 3 3 3 0 0 1-1 5.8V19h-2v-2h-6v2H7v-2.2A3 3 0 0 1 6 11a3 3 0 0 1 3-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L6 5M15 9l3-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+  }
+
+  if (sub === 'buffalo' || sub === 'bufalo' || sub === 'búfalo') {
+    // Buffalo / Búfalo SVG (cabeça mais larga, chifres curvos característicos)
+    return `<path d="M19 9c0-1.1-.9-2-2-2h-1l-1-2H9L8 7H7c-1.1 0-2 .9-2 2v4l-2 1v3l2 1v3h2v-2h6v2h2v-3l2-1v-3l-2-1V9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 7C4 6 3 4 4 2M17 7c3-1 4-3 3-5M9 11h.01M15 11h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+  }
+
   if (sub === 'tractor' || sub === 'trator' || sub === 'harvester' || sub === 'maquina_agricola') {
     // Tractor SVG
     return `<circle cx="7" cy="17" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="15" r="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 14h6l2-6h5v7M10 8V5h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 17h2" stroke="currentColor" stroke-width="2"/>`;
@@ -239,6 +249,20 @@ export const SheepIcon: React.FC<{ className?: string; size?: number }> = ({ cla
   </svg>
 );
 
+export const GoatIcon: React.FC<{ className?: string; size?: number }> = ({ className = 'w-4 h-4', size }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 9a3 3 0 0 1 6 0v1a3 3 0 0 1 3 3 3 3 0 0 1-1 5.8V19h-2v-2h-6v2H7v-2.2A3 3 0 0 1 6 11a3 3 0 0 1 3-2z" />
+    <path d="M9 9L6 5M15 9l3-4" />
+  </svg>
+);
+
+export const BuffaloIcon: React.FC<{ className?: string; size?: number }> = ({ className = 'w-4 h-4', size }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 9c0-1.1-.9-2-2-2h-1l-1-2H9L8 7H7c-1.1 0-2 .9-2 2v4l-2 1v3l2 1v3h2v-2h6v2h2v-3l2-1v-3l-2-1V9z" />
+    <path d="M7 7C4 6 3 4 4 2M17 7c3-1 4-3 3-5M9 11h.01M15 11h.01" />
+  </svg>
+);
+
 export const TractorIcon: React.FC<{ className?: string; size?: number }> = ({ className = 'w-4 h-4', size }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="7" cy="17" r="3" />
@@ -282,6 +306,12 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
   }
   if (sub === 'sheep' || sub === 'ovino' || sub === 'ovelha') {
     return <SheepIcon className={className} size={size} />;
+  }
+  if (sub === 'goat' || sub === 'caprino' || sub === 'cabra' || sub === 'bode') {
+    return <GoatIcon className={className} size={size} />;
+  }
+  if (sub === 'buffalo' || sub === 'bufalo' || sub === 'búfalo') {
+    return <BuffaloIcon className={className} size={size} />;
   }
   if (sub === 'tractor' || sub === 'trator' || sub === 'harvester' || sub === 'maquina_agricola') {
     return <TractorIcon className={className} size={size} />;
