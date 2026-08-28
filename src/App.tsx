@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AssetProvider } from './context/AssetContext';
 import { Header } from './components/layout/Header';
@@ -101,8 +101,32 @@ const AuthenticatedShell: React.FC = () => {
   );
 };
 
+// PRODUCTION-DEPLOY-REPORT.md: URL por tenant (/sao-joao, /grupo-zaffari,
+// ou o slug de qualquer tenant real). Puramente cosmético/de navegação —
+// nunca decide acesso a dado nenhum. Trocar o slug na URL manualmente não
+// concede (nem tira) acesso a nada: isso continua 100% decidido pelo JWT/
+// RBAC/RLS já existentes, do jeito que já foi testado exaustivamente em
+// RBAC-SECURITY-GATE.md. O único efeito daqui é: depois de autenticado, se
+// a URL não bate com o slug do PRÓPRIO tenant do usuário, redireciona pra
+// URL canônica dele — nunca pra URL de outro tenant, nunca antes do login.
+function useTenantSlugRedirect(availableClients: { id: string; slug?: string }[], userClientId: string | undefined, userRole: string | undefined) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (userRole === 'ATHOS_ADMIN' || !userClientId) return; // admin não tem "um" tenant; sem tenant, sem slug pra redirecionar
+    const myTenant = availableClients.find((c) => c.id === userClientId);
+    if (!myTenant?.slug) return;
+    const urlSlug = location.pathname.replace(/^\/+/, '').split('/')[0] || '';
+    if (urlSlug !== myTenant.slug) {
+      navigate(`/${myTenant.slug}`, { replace: true });
+    }
+  }, [availableClients, userClientId, userRole, location.pathname, navigate]);
+}
+
 const AppGate: React.FC = () => {
-  const { isAuthenticated, isAuthLoading } = useAuth();
+  const { isAuthenticated, isAuthLoading, user, availableClients } = useAuth();
+  useTenantSlugRedirect(availableClients, user?.clientId, user?.role);
 
   if (isAuthLoading) {
     return (
