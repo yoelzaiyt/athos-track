@@ -24,7 +24,6 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
-  Line,
   CartesianGrid,
   XAxis,
   YAxis,
@@ -38,7 +37,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { selectedClientId, selectedUnitId, theme } = useAuth();
-  const { getStats } = useAssets();
+  const { getStats, alerts } = useAssets();
   const [hoveredStatusIndex, setHoveredStatusIndex] = useState<number | null>(null);
 
   const stats = getStats(selectedClientId, selectedUnitId);
@@ -59,15 +58,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     { name: 'Fora de Cerca', value: stats.outOfGeofence, color: '#f43f5e' },
   ];
 
-  // Chart Data: Hourly Events Timeline
-  const eventsTimelineData = [
-    { hora: '08:00', cercas: 12, alertas: 2, pings: 480 },
-    { hora: '09:00', cercas: 24, alertas: 5, pings: 720 },
-    { hora: '10:00', cercas: 45, alertas: 8, pings: 910 },
-    { hora: '11:00', cercas: 38, alertas: 3, pings: 840 },
-    { hora: '12:00', cercas: 19, alertas: 1, pings: 650 },
-    { hora: '13:00', cercas: 52, alertas: 6, pings: 980 },
-  ];
+  // Chart Data: Hourly Events Timeline — achado do FINAL-PRE-PRODUCTION-GATE.md
+  // (mock ativo em produção): antes era um array fixo hardcoded (mesmos 6
+  // números sempre, pra qualquer tenant, qualquer dia), rotulado como
+  // "registrados hoje" sem ter relação nenhuma com dado real. Agora deriva
+  // de `alerts` (já vem escopado por tenant do AssetContext — mesmo padrão
+  // usado em AlertsPage.tsx), nas últimas 6 horas de verdade. Sem fonte de
+  // "pings de telemetria" carregada neste componente (exigiria buscar
+  // asset_route_points, que só HistoryPage.tsx carrega hoje) — a série foi
+  // removida em vez de inventar um número; ver comentário do gráfico abaixo.
+  const now = new Date();
+  const eventsTimelineData = Array.from({ length: 6 }, (_, i) => {
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    hourStart.setHours(now.getHours() - (5 - i));
+    const hourEnd = new Date(hourStart.getTime() + 60 * 60 * 1000);
+    const inBucket = alerts.filter((a) => {
+      const t = new Date(a.timestamp).getTime();
+      return t >= hourStart.getTime() && t < hourEnd.getTime();
+    });
+    return {
+      hora: `${String(hourStart.getHours()).padStart(2, '0')}:00`,
+      cercas: inBucket.filter((a) => a.type === 'geofence_entry' || a.type === 'geofence_exit').length,
+      alertas: inBucket.filter((a) => a.type !== 'geofence_entry' && a.type !== 'geofence_exit').length,
+    };
+  });
 
   return (
     <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
@@ -199,7 +214,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <span>Volume de Eventos por Hora</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Cercas cruzadas, alertas e pings de telemetria registrados hoje
+                Cercas cruzadas e alertas registrados nas últimas 6 horas
               </p>
             </div>
           </div>
@@ -209,32 +224,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                 <XAxis dataKey="hora" stroke="#94a3b8" fontSize={11} />
                 <YAxis
-                  yAxisId="left"
                   stroke="#94a3b8"
                   fontSize={11}
+                  allowDecimals={false}
                   label={{ value: 'Cercas / Alertas', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#a855f7"
-                  fontSize={11}
-                  label={{ value: 'Pings', angle: 90, position: 'insideRight', fontSize: 10, fill: '#a855f7' }}
                 />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar yAxisId="left" dataKey="cercas" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Cercas Cruzadas" />
-                <Bar yAxisId="left" dataKey="alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="pings"
-                  stroke="#a855f7"
-                  strokeWidth={2}
-                  dot={{ r: 3, fill: '#a855f7' }}
-                  activeDot={{ r: 5 }}
-                  name="Pings de Telemetria"
-                />
+                <Bar dataKey="cercas" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Cercas Cruzadas" />
+                <Bar dataKey="alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

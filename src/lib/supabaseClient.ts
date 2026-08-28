@@ -37,7 +37,9 @@ const authListeners: AuthListener[] = [];
 
 let socket: Socket | null = null;
 function getSocket(): Socket {
-  if (!socket) socket = io(API_URL, { transports: ['websocket'] });
+  // SEC-003: o servidor agora exige um JWT válido no handshake (ver
+  // server/api/realtime.ts) — sem isso a conexão é recusada.
+  if (!socket) socket = io(API_URL, { transports: ['websocket'], auth: { token: authToken } });
   return socket;
 }
 
@@ -270,6 +272,10 @@ export const supabase = {
     },
 
     async signOut() {
+      // SEC-008: revoga a sessão no servidor (session_version++), não só
+      // limpa o token localmente — best-effort, não bloqueia o logout local
+      // se a API estiver fora do ar.
+      apiFetch('/auth/logout', { method: 'POST' }).catch(() => {});
       setSession(null, null);
       authListeners.forEach((l) => l('SIGNED_OUT', null));
       return { error: null };

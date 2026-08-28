@@ -10,6 +10,7 @@ import {
   Radio,
   Forklift,
   Bike,
+  Archive,
   Navigation,
   Sparkles,
   Command,
@@ -92,6 +93,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onS
     { key: 'truck', label: 'Frotas', icon: Truck },
     { key: 'forklift', label: 'Empilhadeiras', icon: Forklift },
     { key: 'bike', label: 'Bicicletas', icon: Bike },
+    { key: 'box', label: 'Caixas', icon: Archive },
     { key: 'tag', label: 'Tags BLE', icon: Tag },
   ];
 
@@ -108,6 +110,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onS
         return <Bike className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
       case 'tag':
         return <Tag className="w-4 h-4 text-violet-600 dark:text-violet-400" />;
+      case 'box':
+        return <Archive className="w-4 h-4 text-orange-600 dark:text-orange-400" />;
       default:
         return <Radio className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
     }

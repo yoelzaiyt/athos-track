@@ -28,6 +28,7 @@ export const Login: React.FC = () => {
   const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +44,7 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setInfoMsg('');
     setIsSubmitting(true);
     const success = await login(email, password);
     setIsSubmitting(false);
@@ -124,6 +126,12 @@ export const Login: React.FC = () => {
               </div>
             )}
 
+            {infoMsg && (
+              <div className="mb-4 p-3 bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs rounded-xl font-medium text-center animate-[login-card-in_0.3s_ease-out]">
+                {infoMsg}
+              </div>
+            )}
+
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="relative">
@@ -189,7 +197,13 @@ export const Login: React.FC = () => {
                   href="#forgot"
                   onClick={(e) => {
                     e.preventDefault();
-                    alert('Instruções de recuperação foram enviadas para o seu e-mail cadastrado.');
+                    // SEC-010 (SECURITY-GATE-REPORT.md): não existe fluxo de
+                    // recuperação de senha automatizado (precisaria de um
+                    // provedor de e-mail, que este projeto ainda não integra)
+                    // — mensagem honesta em vez de simular um envio que nunca
+                    // acontece.
+                    setErrorMsg('');
+                    setInfoMsg('Recuperação automática de senha ainda não está disponível. Entre em contato com o administrador da sua empresa ou com o suporte ATHOS para redefinir sua senha.');
                   }}
                   className="text-cyan-400 hover:underline font-medium"
                 >

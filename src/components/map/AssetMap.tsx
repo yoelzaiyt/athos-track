@@ -791,7 +791,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     displayAssets.forEach((asset) => {
       const lat = asset.telemetry.latitude;
       const lng = asset.telemetry.longitude;
-      if (isNaN(lat) || isNaN(lng)) return;
+      // isNaN(null) é false (Number(null) === 0) — um ativo sem posição ainda
+      // (ex.: recém-cadastrado, nunca recebeu sinal) tem lat/lng null do
+      // banco, não NaN, e passava direto pro L.marker([null, null]), que
+      // quebra a página inteira dentro do cálculo de projeção do Leaflet.
+      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
 
       const gridLat = Math.floor(lat / gridSize) * gridSize + gridSize / 2;
       const gridLng = Math.floor(lng / gridSize) * gridSize + gridSize / 2;
@@ -999,7 +1003,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       // lados de uma borda de grade. Flood-fill simples sobre a matriz de distâncias.
       const CLUSTER_RADIUS_PX = 48;
       const validAssets = displayAssets.filter(
-        (a) => !isNaN(a.telemetry.latitude) && !isNaN(a.telemetry.longitude)
+        (a) =>
+          a.telemetry.latitude != null &&
+          a.telemetry.longitude != null &&
+          !isNaN(a.telemetry.latitude) &&
+          !isNaN(a.telemetry.longitude)
       );
       const screenPoints = validAssets.map((asset) =>
         map.latLngToContainerPoint([asset.telemetry.latitude, asset.telemetry.longitude])
@@ -1062,7 +1070,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     function renderSingleAssetMarker(asset: AssetDevice, mapInstance: L.Map) {
       const lat = asset.telemetry.latitude;
       const lng = asset.telemetry.longitude;
-      if (isNaN(lat) || isNaN(lng)) return;
+      // isNaN(null) é false (Number(null) === 0) — um ativo sem posição ainda
+      // (ex.: recém-cadastrado, nunca recebeu sinal) tem lat/lng null do
+      // banco, não NaN, e passava direto pro L.marker([null, null]), que
+      // quebra a página inteira dentro do cálculo de projeção do Leaflet.
+      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
 
       const isSelected = (activeDrawerAsset || selectedAssetOverride || selectedAsset)?.id === asset.id;
 
@@ -1142,7 +1154,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     if (target && mapInstanceRef.current) {
       const lat = target.telemetry.latitude;
       const lng = target.telemetry.longitude;
-      if (!isNaN(lat) && !isNaN(lng)) {
+      if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
         mapInstanceRef.current.flyTo([lat, lng], Math.max(mapInstanceRef.current.getZoom(), 15), {
           duration: 1.0,
         });
@@ -1217,6 +1229,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <option value="forklift">Empilhadeiras</option>
                   <option value="bike">Bicicletas</option>
                   <option value="cargo">Cargas</option>
+                  <option value="box">Caixas</option>
                   <option value="agro">Agro</option>
                   <option value="tag">Tags BLE</option>
                 </select>

@@ -387,9 +387,24 @@ export const rowToProviderHealth = (row: Row): ProviderHealth => fromRow(row, PR
 const CLIENT_FIELDS: FieldMap = [
   ['name', 'name'], ['code', 'code'], ['cnpj', 'cnpj'], ['unitsCount', 'units_count'],
   ['assetsCount', 'assets_count'], ['status', 'status'], ['serviceExpireDate', 'service_expire_date'],
+  ['slug', 'slug'], ['defaultProviderId', 'default_provider_id'],
+  ['brandColor', 'brand_color'], ['logoUrl', 'logo_url'], ['enabledModules', 'enabled_modules'],
 ];
 
 export const rowToClient = (row: Row): CompanyClient => ({ id: row.id, ...fromRow(row, CLIENT_FIELDS) } as CompanyClient);
+
+// Gerenciador de Tenants (src/pages/admin/ClientsPage.tsx): create/update
+// mandam só os campos editáveis pela tela — units_count/assets_count são
+// derivados (triggers/queries), nunca setados pela UI.
+const CLIENT_EDITABLE_FIELDS: FieldMap = [
+  ['name', 'name'], ['code', 'code'], ['cnpj', 'cnpj'], ['status', 'status'],
+  ['serviceExpireDate', 'service_expire_date'], ['slug', 'slug'],
+  ['defaultProviderId', 'default_provider_id'], ['brandColor', 'brand_color'],
+  ['logoUrl', 'logo_url'], ['enabledModules', 'enabled_modules'],
+];
+
+export const clientToInsertRow = (client: Partial<CompanyClient>): Row => toRow(client as Row, CLIENT_EDITABLE_FIELDS);
+export const clientUpdatesToRow = (updates: Partial<CompanyClient>): Row => toRowPartial(updates as Row, CLIENT_EDITABLE_FIELDS);
 
 const UNIT_FIELDS: FieldMap = [
   ['clientId', 'client_id'], ['name', 'name'], ['city', 'city'], ['state', 'state'],

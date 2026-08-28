@@ -136,11 +136,16 @@ export class BrGpsRepository {
     const current = currentRow.rows[0];
     const lastKnownAt: Date | null = current?.telemetry_packet_timestamp ? new Date(current.telemetry_packet_timestamp) : null;
     // Seção 20: nunca substituir a posição atual por uma mais antiga — só grava histórico.
-    const isNewer = !lastKnownAt || position.occurredAt.getTime() > lastKnownAt.getTime();
+    // Isto é só uma checagem ESPECULATIVA (baseada num SELECT que já pode
+    // estar obsoleto no momento em que o UPDATE abaixo realmente roda) —
+    // decide se vale a pena computar geofence/tentar o UPDATE, não é a
+    // fonte de verdade final. Ver isNewer (resultado real) mais abaixo.
+    const speculativeIsNewer = !lastKnownAt || position.occurredAt.getTime() > lastKnownAt.getTime();
 
     let geofenceEvent: GeofenceEventResult | null = null;
+    let isNewer = false;
 
-    if (isNewer) {
+    if (speculativeIsNewer) {
       let nextStatus: string = current?.status ?? target.status;
 
       if (target.geofenceId) {
@@ -173,14 +178,29 @@ export class BrGpsRepository {
         }
       }
 
-      await this.client.query(
+      // MULTI-PROVIDER-VALIDATION.md (teste de concorrência real): o SELECT
+      // acima pode estar obsoleto no instante em que este UPDATE roda de
+      // verdade — sob concorrência, duas chamadas concorrentes podiam ler
+      // "sou mais novo" a partir do mesmo estado antigo e a que gravasse
+      // por ÚLTIMO em relógio de parede vencia, mesmo carregando o
+      // timestamp de GPS mais ANTIGO das duas (lost update clássico,
+      // confirmado com 40 chamadas concorrentes no mesmo asset — a posição
+      // final não batia com o timestamp mais recente enviado). Fechado
+      // tornando a comparação parte da própria condição do UPDATE — o
+      // Postgres serializa por lock de linha, então quem quer que grave
+      // por último sempre reavalia contra o valor JÁ COMMITADO, não contra
+      // a leitura obsoleta de antes. `isNewer` real = o UPDATE realmente
+      // afetou uma linha, não mais a checagem especulativa de cima.
+      const updateResult = await this.client.query(
         `update assets set
            telemetry_latitude = $1, telemetry_longitude = $2,
            telemetry_battery_raw = $3, telemetry_battery_level_category = $4,
            telemetry_last_communication = $5, telemetry_packet_timestamp = $6,
            telemetry_provider_published_at = $7, telemetry_position_source = 'GPS',
            status = $8, mac = coalesce($9, mac), updated_at = now()
-         where id = $10`,
+         where id = $10
+           and (telemetry_packet_timestamp is null or telemetry_packet_timestamp < $6)
+         returning id`,
         [
           position.latitude,
           position.longitude,
@@ -194,12 +214,35 @@ export class BrGpsRepository {
           target.assetId,
         ]
       );
+      isNewer = (updateResult.rowCount ?? 0) > 0;
+      if (!isNewer) {
+        // Perdeu a corrida de verdade — um concorrente com timestamp mais
+        // novo já commitou entre nossa leitura e nosso UPDATE. O status/
+        // geofenceEvent que calculamos acima partiu de um estado que já
+        // não vale mais — descarta, não dispara alerta baseado nele.
+        geofenceEvent = null;
+      }
     }
 
-    await this.client.query(
+    // MULTI-PROVIDER-VALIDATION.md (teste de concorrência real, 40 chamadas
+    // simultâneas contra o mesmo asset): a checagem de dedup acima (SELECT
+    // antes deste INSERT) não é atômica — sob concorrência de verdade, duas
+    // chamadas com o MESMO fingerprint podiam passar as duas pela checagem
+    // (nenhuma via a linha da outra ainda) e só uma das duas conseguia
+    // inserir; a outra estourava a constraint única (`idx_route_points_
+    // fingerprint`) como EXCEÇÃO NÃO TRATADA, derrubando o resto do ciclo
+    // de sync inteiro (o `for` em BrGpsService.runSyncTick não tem try/catch
+    // por posição, só no ciclo todo). `on conflict do nothing` torna o
+    // INSERT em si a fonte de verdade atômica do dedup — quem perder a
+    // corrida cai graciosamente em "já deduplicado" (mesmo formato do
+    // dedup check acima) em vez de derrubar o ciclo. Isso também evita
+    // disparar `geofenceEvent` duas vezes pra exatamente a mesma leitura.
+    const inserted = await this.client.query(
       `insert into asset_route_points
          (asset_id, latitude, longitude, speed, event, recorded_at, provider, provider_published_at, distance_raw, battery_raw, fingerprint)
-       values ($1, $2, $3, 0, $4, $5, 'BRGPS', $6, $7, $8, $9)`,
+       values ($1, $2, $3, 0, $4, $5, 'BRGPS', $6, $7, $8, $9)
+       on conflict (fingerprint) where fingerprint is not null do nothing
+       returning id`,
       [
         target.assetId,
         position.latitude,
@@ -212,6 +255,11 @@ export class BrGpsRepository {
         fingerprint,
       ]
     );
+    if ((inserted.rowCount ?? 0) === 0) {
+      // Perdeu a corrida pro fingerprint — um concorrente já gravou
+      // exatamente esta leitura entre a checagem e este insert.
+      return { deduped: true, positionUpdated: false, geofenceEvent: null };
+    }
 
     await this.client.query('update provider_devices set last_synced_at = now() where id = $1', [target.providerDeviceId]);
 

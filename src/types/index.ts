@@ -36,6 +36,12 @@ export interface CompanyClient {
   status: 'active' | 'inactive';
   // Expiração de serviço em nível de conta/empresa (revenda white-label)
   serviceExpireDate?: string;
+  // Gerenciador de Tenants (ver docs/MULTI-TENANT-ARCHITECTURE.md)
+  slug?: string;
+  defaultProviderId?: string; // 'brgps' (aliases 'heile'/'jason') — ver ProviderRegistry
+  brandColor?: string;
+  logoUrl?: string;
+  enabledModules?: string[];
 }
 
 export interface CompanyUnit {
@@ -57,6 +63,7 @@ export type AssetCategory =
   | 'asset'
   | 'bike'
   | 'cargo'
+  | 'box' // "Caixa" (São João) — distinta de 'cargo' (carga/frete com lacre eletrônico)
   | 'tag'
   | 'agro';
 
@@ -83,7 +90,9 @@ export type AssetSubcategory =
   | 'freezer'
   | 'tool'
   | 'machine'
-  | 'tag';
+  | 'tag'
+  | 'box'
+  | 'sealed_box';
 
 export type AssetStatus =
   | 'online'

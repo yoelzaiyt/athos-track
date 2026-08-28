@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
-import { Search, ShoppingCart, Truck, Forklift, Bike, Box, Radio, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ShoppingCart, Truck, Forklift, Bike, Box, Archive, Radio, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const LiveMapPage: React.FC = () => {
   const { selectedClientId, selectedUnitId } = useAuth();
@@ -30,6 +30,8 @@ export const LiveMapPage: React.FC = () => {
         return <Forklift className="w-3.5 h-3.5 text-yellow-400" />;
       case 'bike':
         return <Bike className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'box':
+        return <Archive className="w-3.5 h-3.5 text-orange-400" />;
       default:
         return <Box className="w-3.5 h-3.5 text-indigo-400" />;
     }

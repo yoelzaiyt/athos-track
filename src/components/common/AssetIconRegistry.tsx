@@ -15,6 +15,7 @@ import {
   Snowflake,
   Cpu,
   Box,
+  Archive,
 } from 'lucide-react';
 import { AssetCategory, AssetSubcategory } from '../../types';
 
@@ -121,6 +122,16 @@ export const ASSET_CATEGORY_META: Record<AssetCategory, AssetCategoryMeta> = {
     textClass: 'text-lime-600 dark:text-lime-400',
     defaultSubcategory: 'cattle',
   },
+  box: {
+    category: 'box',
+    label: 'Caixa',
+    primaryColor: '#f97316', // Orange — distinto de 'cargo' (roxo) e 'asset' (índigo)
+    secondaryColor: '#fb923c',
+    bgClass: 'bg-orange-500/10 dark:bg-orange-500/20',
+    borderClass: 'border-orange-500/30',
+    textClass: 'text-orange-600 dark:text-orange-400',
+    defaultSubcategory: 'box',
+  },
 };
 
 // SVG Paths for Leaflet map markers
@@ -214,6 +225,9 @@ export function getAssetSVGPath(category: AssetCategory, subcategory?: string | 
     case 'tag':
       // Tag Microchip SVG
       return `<rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" fill="none" stroke="currentColor" stroke-width="2"/>`;
+    case 'box':
+      // Archive/crate SVG — distinto do Package (cargo) e do Box genérico (asset)
+      return `<rect x="2" y="3" width="20" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
     default:
       // Generic Box
       return `<rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="2"/>`;
@@ -349,6 +363,8 @@ export const AssetIcon: React.FC<AssetIconProps> = ({
       return <Bike className={className} size={size} />;
     case 'cargo':
       return <Package className={className} size={size} />;
+    case 'box':
+      return <Archive className={className} size={size} />;
     case 'tag':
       return <Tag className={className} size={size} />;
     case 'agro':

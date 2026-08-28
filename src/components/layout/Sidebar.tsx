@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Map,
+  Clock,
   Cpu,
   AlertTriangle,
   FileBarChart2,
@@ -27,6 +28,7 @@ import {
   ShieldAlert,
   Radio,
   Navigation,
+  Archive,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
   const mainItems: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'mapa', label: 'Mapa ao Vivo', icon: Map, badge: 'Ao Vivo' },
+    { key: 'historico', label: 'Histórico', icon: Clock },
     { key: 'dispositivos', label: 'Dispositivos', icon: Cpu },
     { key: 'alertas', label: 'Alertas', icon: AlertTriangle },
     { key: 'relatorios', label: 'Relatórios', icon: FileBarChart2 },
@@ -57,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
 
   const verticalModules: NavItem[] = [
     { key: 'carrinhos', label: 'Carrinhos', icon: ShoppingCart, highlight: true },
+    { key: 'caixas', label: 'Caixas', icon: Archive, highlight: true },
     { key: 'ativos', label: 'Ativos & Equipamentos', icon: Box },
     { key: 'frotas', label: 'Frotas', icon: Truck },
     { key: 'cargas', label: 'Cargas', icon: PackageCheck },

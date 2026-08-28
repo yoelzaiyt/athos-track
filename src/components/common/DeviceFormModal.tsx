@@ -87,6 +87,10 @@ const SUBCATEGORY_OPTIONS: Record<AssetCategory, { value: AssetSubcategory; labe
     { value: 'machine', label: 'Máquina' },
   ],
   tag: [{ value: 'tag', label: 'Tag BLE Genérica' }],
+  box: [
+    { value: 'box', label: 'Caixa Padrão' },
+    { value: 'sealed_box', label: 'Caixa Lacrada' },
+  ],
   agro: [
     { value: 'cattle', label: 'Gado (Bovino)' },
     { value: 'horse', label: 'Cavalo (Equino)' },

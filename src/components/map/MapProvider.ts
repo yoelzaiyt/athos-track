@@ -40,20 +40,26 @@ class AthosMapProvider implements MapProviderAbstraction {
 
   public getTileConfig(mode: MapViewMode, themeMode: ThemeMode = 'dark'): TileProviderConfig {
     if (mode === '2D') {
+      // CARTO descontinuou o acesso anônimo aos estilos Voyager/Dark (agora exige API
+      // key própria: carto.com/basemaps/apikey). Claro usa o tile clássico do OSM (mesmo
+      // provider do modo STREETS, sem chave em qualquer domínio). Escuro usa Stadia Maps
+      // (tiles.stadiamaps.com) — free tier sem chave apenas quando o Referer é localhost;
+      // em produção precisa de uma API key gratuita da Stadia (ver comentário em NIGHT).
       if (themeMode === 'light') {
         return {
           id: '2D',
           name: 'Vetor 2D Operacional (Claro)',
-          url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+          url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 19,
         };
       }
       return {
         id: '2D',
         name: 'Vetor 2D Operacional (Escuro)',
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+        attribution:
+          '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       };
     }
@@ -101,11 +107,16 @@ class AthosMapProvider implements MapProviderAbstraction {
     }
 
     if (mode === 'NIGHT') {
+      // Mesma ressalva do 2D escuro: Stadia libera uso anônimo só com Referer localhost
+      // (dev). Em produção (domínio real), sem VITE_STADIA_API_KEY isso volta a quebrar
+      // como a CARTO quebrou — precisa de conta gratuita em stadiamaps.com e trocar a
+      // URL por .../alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=SUA_CHAVE.
       return {
         id: 'NIGHT',
         name: 'Modo Noturno Manual',
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+        attribution:
+          '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       };
     }

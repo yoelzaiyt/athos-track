@@ -72,8 +72,15 @@ async function main(email: string, password: string) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await client.query('update user_profiles set password_hash = $1 where email = $2', [passwordHash, email]);
-    console.log(`Senha definida para ${email}. Login liberado.`);
+    // session_version++ (SEC-008): troca de senha revoga qualquer token já
+    // emitido pra essa conta, não só libera a senha nova — sem isso, um
+    // token vazado continuaria válido mesmo depois da vítima "resolver" o
+    // problema trocando a senha.
+    await client.query(
+      'update user_profiles set password_hash = $1, session_version = session_version + 1 where email = $2',
+      [passwordHash, email]
+    );
+    console.log(`Senha definida para ${email}. Sessões antigas revogadas. Login liberado.`);
   } finally {
     await client.end();
   }

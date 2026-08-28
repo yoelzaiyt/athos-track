@@ -12,6 +12,7 @@ interface AuthContextType {
   selectedUnitId: string; // 'all' or unit ID
   availableClients: CompanyClient[];
   availableUnits: CompanyUnit[];
+  refreshClients: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
   login: (email: string, pass: string) => Promise<boolean>;
@@ -89,6 +90,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!cancelled) {
           setIsAuthenticated(false);
           setUser(null);
+          // Achado desta rodada (UI-E2E-VALIDATION.md): sem isto, trocar de
+          // conta (logout → login de outro tenant) na MESMA aba, sem F5,
+          // deixava `clients`/`units` com o snapshot da conta anterior —
+          // tenantAllowsModuleKey() não achava o tenant novo na lista velha
+          // e caía no fallback "sem config = não filtra", mostrando módulos
+          // que o tenant novo não tinha contratado (ex.: Caixas pro Grupo
+          // Zaffari, que só tem Carrinhos+Ativos).
+          setClients([]);
+          setUnits([]);
         }
         return;
       }
@@ -96,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!cancelled) {
         setUser(profile);
         setIsAuthenticated(true);
+        await loadClientsAndUnits();
       }
     };
 
@@ -116,24 +127,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Clientes/unidades reais do Supabase — alimentam os seletores (TopBar, filtros
-  // de página, dropdowns de formulário como DeviceFormModal).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [clientsRes, unitsRes] = await Promise.all([
-        supabase.from('company_clients').select('*').order('name'),
-        supabase.from('company_units').select('*').order('name'),
-      ]);
-      if (cancelled) return;
-      if (clientsRes.error) console.error('[AuthContext] Failed to load clients:', clientsRes.error.message);
-      if (unitsRes.error) console.error('[AuthContext] Failed to load units:', unitsRes.error.message);
-      setClients((clientsRes.data ?? []).map(rowToClient));
-      setUnits((unitsRes.data ?? []).map(rowToUnit));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // de página, dropdowns de formulário como DeviceFormModal) e o Gerenciador
+  // de Tenants (src/pages/admin/ClientsPage.tsx).
+  const loadClientsAndUnits = async () => {
+    const [clientsRes, unitsRes] = await Promise.all([
+      supabase.from('company_clients').select('*').order('name'),
+      supabase.from('company_units').select('*').order('name'),
+    ]);
+    if (clientsRes.error) console.error('[AuthContext] Failed to load clients:', clientsRes.error.message);
+    if (unitsRes.error) console.error('[AuthContext] Failed to load units:', unitsRes.error.message);
+    setClients((clientsRes.data ?? []).map(rowToClient));
+    setUnits((unitsRes.data ?? []).map(rowToUnit));
+  };
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -182,24 +187,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const availableUnits =
     selectedClientId === 'all' ? units : units.filter((u) => u.clientId === selectedClientId);
 
+  // Módulos habilitados do tenant do usuário logado (company_clients.
+  // enabled_modules — Gerenciador de Tenants). ATHOS_ADMIN não é filtrado
+  // por isso (administra múltiplos tenants, cada um com módulos diferentes).
+  // Só os 3 módulos configuráveis hoje (carts/boxes/assets) têm chave de
+  // sidebar 1:1 conhecida — os demais itens (frotas/cargas/empilhadeiras/
+  // bicicletas/agro/tags/dispositivos) continuam sem gating por módulo,
+  // como já estavam, pra não mudar comportamento de tenants que nunca
+  // configuraram isso.
+  const TENANT_MODULE_TO_SIDEBAR_KEY: Record<string, string> = {
+    carts: 'carrinhos',
+    assets: 'ativos',
+    boxes: 'caixas',
+  };
+
+  const tenantAllowsModuleKey = (moduleKey: string): boolean => {
+    if (!user || user.role === 'ATHOS_ADMIN') return true;
+    const tenant = clients.find((c) => c.id === user.clientId);
+    if (!tenant || !tenant.enabledModules) return true; // sem config = não filtra (comportamento anterior)
+    const gatedKeys = Object.entries(TENANT_MODULE_TO_SIDEBAR_KEY)
+      .filter(([mod]) => !tenant.enabledModules!.includes(mod))
+      .map(([, key]) => key);
+    return !gatedKeys.includes(moduleKey);
+  };
+
   const canAccessModule = (moduleKey: string): boolean => {
     if (!user) return false;
+    if (!tenantAllowsModuleKey(moduleKey)) return false;
     if (user.role === 'ATHOS_ADMIN') return true;
 
     // RBAC Rules Matrix
+    //
+    // Achado desta rodada (UI-E2E-VALIDATION.md): todas as listas abaixo
+    // usavam a chave 'map', mas a chave real do item de menu (Sidebar.tsx)
+    // sempre foi 'mapa' — nenhum papel além de CLIENT_ADMIN/ATHOS_ADMIN
+    // (que não passam por este switch) conseguia ver "Mapa ao Vivo" no
+    // menu. Corrigido pra 'mapa'; também incluí 'historico' (Histórico —
+    // outra página que existia mas não tinha entrada nenhuma de menu,
+    // mesmo achado) nos mesmos papéis que já viam 'mapa', por serem a
+    // mesma família de funcionalidade (posição atual vs. posição passada).
     switch (user.role) {
       case 'CLIENT_ADMIN':
         return true; // accesses all modules for their client
       case 'FLEET_MANAGER':
-        return ['dashboard', 'map', 'frotas', 'cargas', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'frotas', 'cargas', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'CART_MANAGER':
-        return ['dashboard', 'map', 'carrinhos', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'ASSET_MANAGER':
-        return ['dashboard', 'map', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
       case 'OPERATOR':
-        return ['dashboard', 'map', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas', 'recuperacao_campo'].includes(moduleKey);
       case 'VIEWER':
-        return ['dashboard', 'map', 'relatorios'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'relatorios'].includes(moduleKey);
       default:
         return true;
     }
@@ -216,6 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedUnitId,
         availableClients,
         availableUnits,
+        refreshClients: loadClientsAndUnits,
         toggleTheme,
         setTheme,
         login,

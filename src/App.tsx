@@ -8,6 +8,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { LiveMapPage } from './pages/LiveMapPage';
 import { CartsModule } from './pages/CartsModule';
+import { BoxesModule } from './pages/BoxesModule';
 import { AssetsModule } from './pages/AssetsModule';
 import { FleetModule } from './pages/FleetModule';
 import { CargoModule } from './pages/CargoModule';
@@ -40,6 +41,8 @@ const AuthenticatedShell: React.FC = () => {
         return <LiveMapPage />;
       case 'carrinhos':
         return <CartsModule />;
+      case 'caixas':
+        return <BoxesModule />;
       case 'ativos':
         return <AssetsModule />;
       case 'frotas':

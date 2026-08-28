@@ -1,11 +1,49 @@
 import React, { useState } from 'react';
-import { FileBarChart2, Download, FileText, FileSpreadsheet, Calendar, Filter, Sparkles } from 'lucide-react';
+import { FileBarChart2, Download, FileText, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
+import { useAuth } from '../context/AuthContext';
+
+function todayPtBr(): string {
+  return new Date().toLocaleDateString('pt-BR');
+}
 
 export const ReportsPage: React.FC = () => {
   const { assets, alerts } = useAssets();
+  const { user, availableClients, selectedClientId } = useAuth();
   const [reportType, setReportType] = useState('Localização & Telemetria');
-  const [format, setFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
+
+  // Nome do tenant pra exibir no relatório — o mesmo escopo já aplicado ao
+  // resto da tela (client selecionado, ou o do usuário logado fora de
+  // ATHOS_ADMIN). Achado desta rodada (UI-E2E-VALIDATION.md): esta tela
+  // mostrava um nome de empresa e contagens fixas no código-fonte
+  // ("Assaí Atacadista", "250 Carrinhos", "35 Veículos GT06") sem relação
+  // nenhuma com o tenant realmente logado — corrigido pra usar dado real.
+  const tenantName =
+    availableClients.find((c) => c.id === (selectedClientId !== 'all' ? selectedClientId : user?.clientId))?.name ??
+    (user?.role === 'ATHOS_ADMIN' ? 'Todas as Empresas' : '—');
+
+  // CSV real (mesmo padrão de src/components/common/DataTable.tsx) — as
+  // colunas variam pouco por reportType hoje porque o dado-fonte real
+  // disponível no frontend é assets/alerts; cada linha inclui o tipo de
+  // relatório selecionado pra ficar rastreável no arquivo exportado.
+  const handleExportCsv = () => {
+    const headers = ['tipo_relatorio', 'empresa', 'codigo', 'nome', 'categoria', 'status', 'ultima_comunicacao'];
+    const rows = assets.map((a) =>
+      [reportType, tenantName, a.code, a.name, a.category, a.status, a.telemetry.lastCommunication]
+        .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `athos_track_${reportType.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const reportTypes = [
     'Localização & Telemetria',
@@ -17,10 +55,6 @@ export const ReportsPage: React.FC = () => {
     'Tempo de Movimentação x Parada',
     'Taxa de Utilização da Frota',
   ];
-
-  const handleExport = (exportFormat: 'pdf' | 'excel' | 'csv') => {
-    alert(`Gerando relatório de "${reportType}" no formato ${exportFormat.toUpperCase()}. O download iniciará em instantes.`);
-  };
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
@@ -75,29 +109,34 @@ export const ReportsPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => handleExport('pdf')}
-                className="py-2.5 bg-slate-50 dark:bg-slate-950 hover:bg-rose-50 dark:hover:bg-slate-800 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                disabled
+                title="Exportação em PDF ainda não implementada — use CSV"
+                className="py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed"
               >
                 <FileText className="w-4 h-4" />
                 <span>PDF</span>
               </button>
               <button
                 type="button"
-                onClick={() => handleExport('excel')}
-                className="py-2.5 bg-slate-50 dark:bg-slate-950 hover:bg-emerald-50 dark:hover:bg-slate-800 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                disabled
+                title="Exportação em Excel ainda não implementada — use CSV"
+                className="py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed"
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 <span>Excel</span>
               </button>
               <button
                 type="button"
-                onClick={() => handleExport('csv')}
+                onClick={handleExportCsv}
                 className="py-2.5 bg-slate-50 dark:bg-slate-950 hover:bg-cyan-50 dark:hover:bg-slate-800 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Download className="w-4 h-4" />
                 <span>CSV</span>
               </button>
             </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-600">
+              PDF/Excel: em desenvolvimento. CSV exporta o dado real do período/tenant atual.
+            </p>
           </div>
         </div>
 
@@ -119,23 +158,27 @@ export const ReportsPage: React.FC = () => {
                 ATHOS TRACK TELEMETRY REPORT • {reportType.toUpperCase()}
               </div>
               <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                <div>Empresa: Assaí Atacadista (Piloto de Testes)</div>
+                <div>Empresa: {tenantName}</div>
                 <div>Registros Processados: {assets.length} dispositivos</div>
-                <div>Integridade dos Dados: 99.8%</div>
-                <div>Período: 10/08/2026 - Hoje</div>
+                <div>Ativos: {assets.filter((a) => a.category === 'asset').length}</div>
+                <div>Período: {todayPtBr()}</div>
               </div>
 
               <div className="pt-2 text-[11px] space-y-1 text-slate-500 dark:text-slate-400">
-                <p>• 250 Carrinhos de Compras monitorados via BLE Gateway.</p>
-                <p>• 35 Veículos de Frota com protocolo GT06 operacionais.</p>
-                <p>• {alerts.length} Alertas de cercas virtuais computados no período.</p>
+                <p>• {assets.filter((a) => a.category === 'cart').length} Carrinhos de Compras monitorados.</p>
+                <p>• {assets.filter((a) => a.category === 'vehicle' || a.category === 'truck').length} Veículos de Frota.</p>
+                <p>• {alerts.length} Alertas computados no período.</p>
+                {assets.length === 0 && (
+                  <p className="text-amber-600 dark:text-amber-400">
+                    Nenhum ativo cadastrado neste tenant ainda — relatório sem registros pra exportar.
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
           <div className="pt-4 text-xs text-slate-500 dark:text-slate-500 flex items-center justify-between border-t border-slate-200 dark:border-slate-800">
             <span>Gerado automaticamente pelo motor de dados ATHOS TRACK</span>
-            <span>Segurança ISO 27001 Audited</span>
           </div>
         </div>
       </div>
