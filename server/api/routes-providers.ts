@@ -22,6 +22,30 @@ function resolveProvider(req: import('express').Request, res: import('express').
   return provider;
 }
 
+// GET /providers/health — lista o health de TODOS os providers registrados
+// (hoje só 'brgps' — 'heile'/'jason' são aliases do mesmo objeto, não
+// entradas duplicadas; ProviderRegistry.list() já devolve só os reais).
+// HOMOLOGATION-READINESS-REPORT.md, Fase 1/8: endpoint agregado pedido
+// nesta rodada, além do já existente por :providerId — mesmo nível de
+// acesso (leitura livre pra qualquer autenticado).
+providersRouter.get('/health', async (_req, res) => {
+  try {
+    const results = await Promise.all(
+      ProviderRegistry.list().map(async (provider) => {
+        try {
+          return await provider.healthCheck();
+        } catch (err) {
+          return { providerId: provider.id, status: 'UNAVAILABLE' as const, error: (err as Error).message };
+        }
+      })
+    );
+    res.json(results);
+  } catch (err) {
+    console.error('[providers] aggregate health failed:', (err as Error).message);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 // GET /providers/:providerId/health — status operacional (seção 22). Leitura
 // livre pra qualquer autenticado, mesmo nível de acesso que GET /rest/provider_health.
 providersRouter.get('/:providerId/health', async (req, res) => {

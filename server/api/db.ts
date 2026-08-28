@@ -43,6 +43,16 @@ export interface TenantAuth {
   role: string;
 }
 
+// HOMOLOGATION-READINESS-REPORT.md, Fase 1 (shutdown gracioso): fecha as
+// duas pools (superusuário + a com RLS real, quando configurada) — chamado
+// pelo handler de SIGTERM/SIGINT em server/api/index.ts. Sem isso, um
+// redeploy no Railway (que manda SIGTERM antes de matar o processo) corta a
+// conexão com o Postgres abruptamente em vez de drenar as queries em voo.
+export async function closeDbPools(): Promise<void> {
+  await pool.end();
+  if (restrictedPool) await restrictedPool.end();
+}
+
 // Roda fn(client) dentro de uma transação com o contexto de tenant do
 // usuário definido via set_config (SET LOCAL, escopo só dessa transação —
 // reseta sozinho no COMMIT/ROLLBACK, sem risco de vazar pra outra requisição

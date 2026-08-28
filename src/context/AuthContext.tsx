@@ -226,17 +226,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // outra página que existia mas não tinha entrada nenhuma de menu,
     // mesmo achado) nos mesmos papéis que já viam 'mapa', por serem a
     // mesma família de funcionalidade (posição atual vs. posição passada).
+    //
+    // Achado desta rodada (FINAL-END-TO-END-VALIDATION-REPORT.md): as 4
+    // listas abaixo também citavam 'recuperacao_campo' — chave sem NENHUM
+    // item de menu, NENHUM `case` em App.tsx e NENHUM componente ligado
+    // (só um `FieldRecoveryContext.tsx` órfão, nunca montado na árvore de
+    // providers). Era um link morto: clicar em "Central de Recuperação de
+    // Campo" no menu caía no `default` do switch de App.tsx e mostrava o
+    // Dashboard silenciosamente. Removido o item de menu (Sidebar.tsx) e a
+    // referência aqui; `FieldRecoveryContext.tsx` deixado como está
+    // (código morto, mas sem risco — não apagado por poder representar
+    // trabalho planejado, ver pendências do relatório).
     switch (user.role) {
       case 'CLIENT_ADMIN':
         return true; // accesses all modules for their client
       case 'FLEET_MANAGER':
-        return ['dashboard', 'mapa', 'historico', 'frotas', 'cargas', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'frotas', 'cargas', 'alertas', 'relatorios'].includes(moduleKey);
       case 'CART_MANAGER':
-        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'tags', 'alertas', 'relatorios'].includes(moduleKey);
       case 'ASSET_MANAGER':
-        return ['dashboard', 'mapa', 'historico', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'ativos', 'empilhadeiras', 'tags', 'alertas', 'relatorios'].includes(moduleKey);
       case 'OPERATOR':
-        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas', 'recuperacao_campo'].includes(moduleKey);
+        return ['dashboard', 'mapa', 'historico', 'carrinhos', 'ativos', 'frotas', 'empilhadeiras', 'alertas'].includes(moduleKey);
       case 'VIEWER':
         return ['dashboard', 'mapa', 'historico', 'relatorios'].includes(moduleKey);
       default:
