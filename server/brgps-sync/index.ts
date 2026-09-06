@@ -9,6 +9,11 @@
 //   npx tsx server/brgps-sync/index.ts history <id> <fromISO> <toISO>   # GET /tag/history real
 //   npx tsx server/brgps-sync/index.ts test                # teste de conectividade seção 23/24/41 do brief
 //
+// Adicione --account=2 em qualquer comando acima pra usar a segunda conta
+// BRGPS (env BRGPS2_*, achada em 2026-09-06 — mesmo fornecedor/protocolo,
+// api_token diferente, tag 3092524777) em vez da conta original (BRGPS_*).
+// Ex: npx tsx server/brgps-sync/index.ts discover --account=2
+//
 // Vinculação Device -> Asset (seção 12) não é feita aqui: é uma escrita simples
 // em provider_devices, feita pelo próprio frontend autenticado (mesmo padrão de
 // todo o resto do app, que fala direto com o Supabase via RLS) — ver TagsModule.tsx.
@@ -24,26 +29,32 @@ import { BrGpsService } from '../integrations/brgps/BrGpsService.ts';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: path.resolve(__dirname, '../../.env') });
 
-const BRGPS_ENABLED = (process.env.BRGPS_ENABLED ?? 'false').toLowerCase() === 'true';
-const BRGPS_BASE_URL = process.env.BRGPS_BASE_URL;
-const BRGPS_API_TOKEN = process.env.BRGPS_API_TOKEN;
 const BRGPS_SYNC_INTERVAL_SECONDS = Number(process.env.BRGPS_SYNC_INTERVAL_SECONDS ?? 15);
 const DIRECT_URL = process.env.DIRECT_URL;
 
-function requireEnv(): { baseUrl: string; apiToken: string; directUrl: string } {
-  if (!BRGPS_ENABLED) {
-    console.error('[brgps-sync] BRGPS_ENABLED=false — nenhuma chamada ao fornecedor será feita (seção 43 do brief). Ajuste o .env para "true" para prosseguir.');
+// --account=2 seleciona a segunda conta BRGPS (env BRGPS2_*, achada em
+// 2026-09-06 — mesmo protocolo/fornecedor, api_token diferente, tag
+// 3092524777). Sem a flag, comportamento igual ao de sempre (conta original,
+// env BRGPS_*, chave de provider "BRGPS").
+function requireEnv(account: '1' | '2'): { baseUrl: string; apiToken: string; directUrl: string; providerKey: string } {
+  const prefix = account === '2' ? 'BRGPS2' : 'BRGPS';
+  const enabled = (process.env[`${prefix}_ENABLED`] ?? 'false').toLowerCase() === 'true';
+  const baseUrl = process.env[`${prefix}_BASE_URL`];
+  const apiToken = process.env[`${prefix}_API_TOKEN`];
+
+  if (!enabled) {
+    console.error(`[brgps-sync] ${prefix}_ENABLED=false — nenhuma chamada ao fornecedor será feita (seção 43 do brief). Ajuste o .env para "true" para prosseguir.`);
     process.exit(1);
   }
-  if (!BRGPS_BASE_URL || !BRGPS_API_TOKEN) {
-    console.error('[brgps-sync] BRGPS_BASE_URL / BRGPS_API_TOKEN não definidos no .env.');
+  if (!baseUrl || !apiToken) {
+    console.error(`[brgps-sync] ${prefix}_BASE_URL / ${prefix}_API_TOKEN não definidos no .env.`);
     process.exit(1);
   }
   if (!DIRECT_URL) {
     console.error('[brgps-sync] DIRECT_URL não definido no .env — não dá pra gravar/consultar o Postgres do ATHOS.');
     process.exit(1);
   }
-  return { baseUrl: BRGPS_BASE_URL, apiToken: BRGPS_API_TOKEN, directUrl: DIRECT_URL };
+  return { baseUrl, apiToken, directUrl: DIRECT_URL, providerKey: account === '2' ? 'BRGPS_2' : 'BRGPS' };
 }
 
 function buildService(baseUrl: string, apiToken: string, repo: BrGpsRepository): BrGpsService {
@@ -53,12 +64,17 @@ function buildService(baseUrl: string, apiToken: string, repo: BrGpsRepository):
 }
 
 async function main() {
-  const [, , command, ...args] = process.argv;
-  const { baseUrl, apiToken, directUrl } = requireEnv();
+  const rawArgs = process.argv.slice(2);
+  const accountFlagIndex = rawArgs.findIndex((a) => a === '--account=2');
+  const account: '1' | '2' = accountFlagIndex === -1 ? '1' : '2';
+  if (accountFlagIndex !== -1) rawArgs.splice(accountFlagIndex, 1);
+  const [command, ...args] = rawArgs;
 
-  const repo = new BrGpsRepository(directUrl);
+  const { baseUrl, apiToken, directUrl, providerKey } = requireEnv(account);
+
+  const repo = new BrGpsRepository(directUrl, providerKey);
   await repo.connect();
-  console.log('[brgps-sync] conectado ao Postgres do ATHOS.');
+  console.log(`[brgps-sync] conectado ao Postgres do ATHOS (conta ${providerKey}).`);
 
   const service = buildService(baseUrl, apiToken, repo);
 

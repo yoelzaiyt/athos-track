@@ -1,6 +1,6 @@
-// API própria que substitui o Supabase (Postgres direto no Railway + Auth
-// própria + Realtime via Socket.io). Ver docs/deploy/RAILWAY_VERCEL.md para
-// o passo a passo de deploy completo.
+// API própria (Express) que fala direto com o Postgres do Supabase (via
+// DATABASE_URL/APP_DATABASE_URL, ver server/api/db.ts) + Auth própria +
+// Realtime via Socket.io — não usa o SDK/REST/Auth nativo do Supabase.
 
 import 'dotenv/config';
 import express from 'express';
@@ -43,6 +43,22 @@ if (process.env.BRGPS_ENABLED === 'true' && process.env.BRGPS_BASE_URL && proces
   ProviderRegistry.register(brgpsProvider, ['heile', 'jason']);
 } else {
   console.warn('[api] Provider BRGPS/Heile/Jason não registrado — BRGPS_ENABLED/BASE_URL/TOKEN ausentes no .env.');
+}
+
+// Segunda conta BRGPS (mesmo fornecedor/protocolo, api_token diferente —
+// achada em 2026-09-06, tag 3092524777). Registrada sob id/health key
+// próprios ('brgps2'/'BRGPS_2') pra não colidir com a conta original —
+// ver providerKey em BrGpsRepository e providerRowKey em BrgpsProvider.
+if (process.env.BRGPS2_ENABLED === 'true' && process.env.BRGPS2_BASE_URL && process.env.BRGPS2_API_TOKEN) {
+  const brgps2Provider = new BrgpsProvider(
+    { baseUrl: process.env.BRGPS2_BASE_URL, apiToken: process.env.BRGPS2_API_TOKEN },
+    pool,
+    'brgps2',
+    'BRGPS_2'
+  );
+  ProviderRegistry.register(brgps2Provider);
+} else {
+  console.warn('[api] Provider BRGPS_2 não registrado — BRGPS2_ENABLED/BASE_URL/TOKEN ausentes no .env.');
 }
 
 const app = express();

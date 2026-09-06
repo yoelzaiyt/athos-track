@@ -42,6 +42,7 @@ import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { Client } from 'pg';
 import { Gt06Repository, type AssetTarget } from '../integrations/gt06/db.ts';
+import { Gt06HomologRepository } from '../integrations/gt06/homologRepo.ts';
 import {
   parseFrames,
   buildAck,
@@ -54,12 +55,36 @@ import {
   PROTOCOL,
   type Gt06Frame,
 } from './protocol.ts';
+import {
+  initHomologStats,
+  logConnection,
+  logRawChunk,
+  logFrame,
+  logAck,
+  logDeviceDetected,
+  logGps,
+  previewDecode,
+  startDiagnosticsServer,
+} from './homologInstrumentation.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: path.resolve(__dirname, '../../.env') });
 
 const PORT = Number(process.env.GT06_LISTENER_PORT ?? 5023);
 const HOST = process.env.GT06_LISTENER_HOST ?? '0.0.0.0';
+
+// Teste de campo com tag física de terceiro (etiqueta/serial externo, IMEI
+// ainda desconhecido) — instrumentação adicional isolada, ver
+// homologInstrumentation.ts e server/integrations/gt06/homologRepo.ts.
+// Com a flag desligada (padrão), nada abaixo roda: comportamento idêntico ao
+// listener de produção antes desta revisão.
+const HOMOLOG_MODE = process.env.GT06_HOMOLOG_MODE === 'true';
+const HOMOLOG_EXTERNAL_LABEL_ID = process.env.GT06_HOMOLOG_EXTERNAL_LABEL_ID ?? '';
+const HOMOLOG_DIAG_PORT = Number(process.env.GT06_HOMOLOG_DIAG_PORT ?? 5080);
+if (HOMOLOG_MODE && !HOMOLOG_EXTERNAL_LABEL_ID) {
+  console.error('[gt06-listener] GT06_HOMOLOG_MODE=true mas GT06_HOMOLOG_EXTERNAL_LABEL_ID não foi definido — abortando.');
+  process.exit(1);
+}
 
 const connectionString = process.env.DIRECT_URL;
 if (!connectionString) {
@@ -72,6 +97,15 @@ await db.connect();
 const gt06Repo = new Gt06Repository(connectionString);
 await gt06Repo.connect();
 console.log('[gt06-listener] conectado ao Postgres.');
+
+let homologRepo: Gt06HomologRepository | undefined;
+if (HOMOLOG_MODE) {
+  homologRepo = new Gt06HomologRepository(connectionString);
+  await homologRepo.connect();
+  initHomologStats(PORT);
+  startDiagnosticsServer({ port: HOMOLOG_DIAG_PORT, homologRepo, externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID });
+  console.log(`[gt06-listener] GT06_HOMOLOG_MODE ativo — etiqueta em teste: ${HOMOLOG_EXTERNAL_LABEL_ID}`);
+}
 
 interface Session {
   imei?: string;
@@ -142,8 +176,16 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
     case PROTOCOL.LOGIN: {
       const imei = decodeBcdImei(frame.content);
       session.imei = imei;
-      socket.write(buildAck(frame.protocol, frame.serial));
+      const loginAck = buildAck(frame.protocol, frame.serial);
+      socket.write(loginAck);
       session.loginOk = true;
+      if (HOMOLOG_MODE) logAck(frame.protocol, frame.serial, loginAck.toString('hex'));
+
+      if (HOMOLOG_MODE && homologRepo) {
+        const ip = remote.split(':')[0];
+        await homologRepo.recordLogin({ externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID, imei, ip, rawHex: frame.raw.toString('hex') });
+        logDeviceDetected({ externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID, imei, remoteIp: ip, protocol: 'GT06' });
+      }
 
       const asset = await gt06Repo.findAssetByImei(imei);
       if (asset) {
@@ -180,8 +222,10 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
         `[gt06-listener] HEARTBEAT de ${remote} (imei=${session.imei ?? '?'})` +
         (hb ? ` — bateria=${hb.voltageLevel} sinal=${hb.gsmSignal}` : ' — conteúdo curto demais pra decodificar')
       );
-      socket.write(buildAck(frame.protocol, frame.serial));
+      const hbAck = buildAck(frame.protocol, frame.serial);
+      socket.write(hbAck);
       session.heartbeatOk = true;
+      if (HOMOLOG_MODE) logAck(frame.protocol, frame.serial, hbAck.toString('hex'));
 
       if (hb && session.mode === 'production' && session.assetTarget) {
         await gt06Repo.applyHeartbeat(session.assetTarget.assetId, hb.voltageLevel);
@@ -231,6 +275,21 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       }
       session.locationOk = true;
 
+      if (loc && HOMOLOG_MODE && homologRepo) {
+        logGps({
+          imei: session.imei ?? 'UNKNOWN',
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          timestamp: loc.timestamp,
+          speedKmh: loc.speedKmh,
+          course: loc.course,
+          satellites: loc.satellites,
+          gpsValid: true,
+          source: 'GPS',
+        });
+        await homologRepo.recordGps({ externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID, latitude: loc.latitude, longitude: loc.longitude, occurredAt: loc.timestamp });
+      }
+
       if (loc && session.mode === 'production' && session.assetTarget) {
         await applyLocationToAsset(session.assetTarget, loc);
       } else if (session.mode === 'homologation') {
@@ -251,6 +310,25 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
         (alarm ? ` — ${mapping!.label} (0x${alarm.alarmCode.toString(16).padStart(2, '0')})` : ' — conteúdo curto demais pra decodificar')
       );
       session.locationOk = session.locationOk || Boolean(alarm?.location);
+
+      if (alarm?.location && HOMOLOG_MODE && homologRepo) {
+        logGps({
+          imei: session.imei ?? 'UNKNOWN',
+          latitude: alarm.location.latitude,
+          longitude: alarm.location.longitude,
+          timestamp: alarm.location.timestamp,
+          speedKmh: alarm.location.speedKmh,
+          course: alarm.location.course,
+          satellites: alarm.location.satellites,
+          mcc: alarm.mcc,
+          mnc: alarm.mnc,
+          lac: alarm.lac,
+          cellId: alarm.cellId,
+          gpsValid: true,
+          source: 'LBS',
+        });
+        await homologRepo.recordGps({ externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID, latitude: alarm.location.latitude, longitude: alarm.location.longitude, occurredAt: alarm.location.timestamp });
+      }
 
       if (alarm?.location && session.mode === 'production' && session.assetTarget) {
         // Bit1 do Terminal Information (seção 5.3.1.14): 1 = ACC alta (ignição ligada).
@@ -336,15 +414,43 @@ async function applyLocationToAsset(
 const server = net.createServer((socket) => {
   const remote = `${socket.remoteAddress}:${socket.remotePort}`;
   console.log(`[gt06-listener] nova conexão: ${remote}`);
+  if (HOMOLOG_MODE) logConnection(socket.remoteAddress ?? 'UNKNOWN', socket.remotePort ?? 0);
 
   const session: Session = { mode: 'unknown', loginOk: false, locationOk: false, heartbeatOk: false, buffer: Buffer.alloc(0) };
 
   socket.on('data', (chunk) => {
+    if (HOMOLOG_MODE) logRawChunk(socket.remoteAddress ?? 'UNKNOWN', socket.remotePort ?? 0, chunk);
+
     session.buffer = Buffer.concat([session.buffer, chunk]);
     const { frames, rest } = parseFrames(session.buffer);
     session.buffer = rest;
 
     for (const frame of frames) {
+      if (HOMOLOG_MODE) {
+        logFrame({
+          remoteIp: socket.remoteAddress ?? 'UNKNOWN',
+          remotePort: socket.remotePort ?? 0,
+          bytes: frame.raw.length,
+          hex: frame.raw.toString('hex'),
+          protocolNumber: frame.protocol,
+          imei: session.imei,
+          serial: frame.serial,
+          crcValid: frame.crcValid,
+          decodedPayload: previewDecode(frame),
+        });
+        if (homologRepo) {
+          homologRepo
+            .recordFrame({
+              externalLabelId: HOMOLOG_EXTERNAL_LABEL_ID,
+              ip: socket.remoteAddress ?? 'UNKNOWN',
+              port: socket.remotePort ?? 0,
+              packetType: `0x${frame.protocol.toString(16).padStart(2, '0')}`,
+              rawHex: frame.raw.toString('hex'),
+            })
+            .catch((err) => console.error('[gt06-homolog] falha ao gravar frame:', err));
+        }
+      }
+
       handleFrame(frame, session, socket, remote).catch((err) => {
         console.error(`[gt06-listener] erro processando frame de ${remote}:`, err);
       });
@@ -356,6 +462,9 @@ const server = net.createServer((socket) => {
       `[gt06-listener] conexão encerrada: ${remote} ` +
       `(imei=${session.imei ?? '?'}, login=${session.loginOk}, location=${session.locationOk}, heartbeat=${session.heartbeatOk})`
     );
+    if (HOMOLOG_MODE && homologRepo) {
+      homologRepo.recordDisconnect(HOMOLOG_EXTERNAL_LABEL_ID).catch((err) => console.error('[gt06-homolog] falha ao gravar disconnect:', err));
+    }
   });
 
   socket.on('error', (err) => {
@@ -373,5 +482,6 @@ process.on('SIGINT', async () => {
   server.close();
   await db.end();
   await gt06Repo.disconnect();
+  if (homologRepo) await homologRepo.disconnect();
   process.exit(0);
 });

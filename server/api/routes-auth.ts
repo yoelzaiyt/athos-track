@@ -62,11 +62,17 @@ function clearFailedAttempts(email: string) {
 }
 
 authRouter.post('/login', loginLimiterByIp, loginLimiterByEmail, async (req, res) => {
-  const { email, password } = req.body ?? {};
-  if (typeof email !== 'string' || typeof password !== 'string') {
+  const { email: rawEmail, password } = req.body ?? {};
+  if (typeof rawEmail !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'email and password are required' });
     return;
   }
+  // Normaliza igual ao registerFailedAttempt/clearFailedAttempts (que já usam
+  // toLowerCase) — sem isso, um e-mail com capitalização diferente da
+  // cadastrada (autocapitalize do teclado mobile, por exemplo) sempre caía
+  // em "Invalid credentials" mesmo com a senha certa, já que `where email = $1`
+  // é case-sensitive.
+  const email = rawEmail.trim().toLowerCase();
 
   try {
     const result = await pool.query(

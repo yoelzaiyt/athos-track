@@ -1,14 +1,17 @@
-// Aplica, em ordem, o schema completo num Postgres novo (o do Railway):
-//   1. server/db/00_bootstrap.sql        — shim mínimo do schema `auth` do Supabase
+// Aplica, em ordem, o schema completo num Postgres novo SEM ser Supabase
+// (ex: Railway, local): server/db/00_bootstrap.sql cria um schema `auth`
+// mínimo e SOBRESCREVE auth.role()/auth.uid() com stubs — nunca rodar este
+// script inteiro contra um projeto Supabase real, isso quebraria as funções
+// nativas do GoTrue. Contra Supabase, aplique só os passos 3/4 à mão
+// (server/db/01_add_password_auth.sql, server/db/02_realtime_notify.sql).
+//   1. server/db/00_bootstrap.sql        — shim mínimo do schema `auth`
 //   2. supabase/migrations/*.sql         — schema original, sem nenhuma edição
 //   3. server/db/01_add_password_auth.sql — coluna de senha pra API própria
 //   4. server/db/02_realtime_notify.sql   — triggers de LISTEN/NOTIFY
 //
 // Idempotente na medida em que os próprios arquivos são (todos usam
 // `if not exists` / `create or replace` / `drop ... if exists`), exceto as
-// migrations históricas do Supabase, que não são re-executáveis por design
-// (mesma limitação que já existia rodando contra o Supabase). Rodar uma vez
-// contra um banco vazio.
+// migrations históricas do Supabase, que não são re-executáveis por design.
 //
 // Uso: DATABASE_URL=postgresql://... npx tsx server/db/migrate.ts
 
@@ -42,7 +45,7 @@ loadEnvFile();
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error('FALHOU: defina DATABASE_URL (a connection string do Postgres do Railway).');
+  console.error('FALHOU: defina DATABASE_URL (a connection string do Postgres).');
   process.exit(1);
 }
 
@@ -76,7 +79,10 @@ function collectSqlFiles(): { label: string; sql: string }[] {
 }
 
 async function main() {
-  const client = new Client({ connectionString: databaseUrl, ssl: databaseUrl!.includes('railway') ? { rejectUnauthorized: false } : undefined });
+  const client = new Client({
+    connectionString: databaseUrl,
+    ssl: databaseUrl!.includes('railway') || databaseUrl!.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+  });
   await client.connect();
   console.log('Conectado ao Postgres.');
 

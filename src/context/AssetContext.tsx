@@ -298,6 +298,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return asset;
           }
 
+          // Ativo recém-cadastrado que nunca recebeu telemetria real (ex.:
+          // tag física ainda em homologação) — não fabricar "lastCommunication:
+          // Agora" nem qualquer outro campo aqui; deve continuar mostrando
+          // "Nunca" até chegar o primeiro pacote real via provider/listener.
+          if (!asset.telemetry.lastCommunication) {
+            return asset;
+          }
+
           // Fixed assets do not move
           if (asset.category === 'asset' || asset.category === 'tag') {
             return {

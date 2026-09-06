@@ -44,7 +44,7 @@ if (!email || !password) {
   console.error('A senha precisa ter pelo menos 6 caracteres.');
   process.exitCode = 1;
 } else if (!process.env.DATABASE_URL) {
-  console.error('Defina DATABASE_URL (connection string do Postgres do Railway).');
+  console.error('Defina DATABASE_URL (connection string do Postgres).');
   process.exitCode = 1;
 } else {
   main(email, password).catch((err) => {

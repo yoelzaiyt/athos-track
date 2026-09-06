@@ -1,0 +1,54 @@
+# App isolado, só pra este teste de homologação (tag física 3092660181).
+# NÃO usa nem referencia o projeto/serviço Railway existente da equipe —
+# aplicativo, conta e banco (Supabase) separados na prática, mesmo reusando
+# o mesmo projeto Supabase já aprovado (ver server/integrations/gt06/homologRepo.ts).
+#
+# "app" precisa ser um nome único global no Fly.io — troque se já existir
+# (você confirma isso no passo de "fly launch"/"fly apps create", ver
+# instruções de entrega). Região "gru" = São Paulo, mais perto do Brasil.
+app = "gt06-homolog-3092660181"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile.gt06-homolog"
+
+[env]
+  GT06_HOMOLOG_MODE = "true"
+  GT06_HOMOLOG_EXTERNAL_LABEL_ID = "3092660181"
+  GT06_LISTENER_PORT = "5023"
+  GT06_LISTENER_HOST = "0.0.0.0"
+  GT06_HOMOLOG_DIAG_PORT = "5080"
+# DIRECT_URL é segredo — NÃO vai aqui. Ver instrução `fly secrets set` na entrega.
+
+# Porta TCP real do protocolo GT06 — a tag conecta aqui. auto_stop/min=1
+# porque um listener TCP precisa ficar de pé o tempo todo (dispositivo
+# celular não "acorda" a máquina como um pedido HTTP acordaria).
+[[services]]
+  internal_port = 5023
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 5023
+
+# Porta HTTP só de diagnóstico (/diagnostics/gt06), usada também como
+# healthcheck do próprio Fly.
+[[services]]
+  internal_port = 5080
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 5080
+    handlers = ["http"]
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/diagnostics/gt06"

@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from 'pg';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
-  throw new Error('Missing DATABASE_URL — set it in the environment (Railway injects this automatically for its Postgres addon).');
+  throw new Error('Missing DATABASE_URL — set it in the environment (the Postgres connection string).');
 }
 
 // Role superusuário do projeto Supabase (BYPASSRLS) — usada pra login,

@@ -1,0 +1,29 @@
+# Imagem isolada SÓ para o worker de homologação GT06 (tag física de
+# terceiro, etiqueta 3092660181). Não é usada por nenhum outro serviço do
+# projeto (API, frontend, brgps-sync) — arquivo próprio, sem tocar nos
+# Dockerfiles/configs de produção (que hoje nem existem no repo).
+#
+# Roda via tsx (mesmo padrão que o resto do repo já usa em
+# package.json:"api:start"/"gt06:listen" — não há passo de build/compilação
+# separado pros scripts de server/*), então precisa das devDependencies
+# (tsx) instaladas na imagem final, não só das dependencies de produção.
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+
+COPY server ./server
+COPY tsconfig.json ./
+
+ENV NODE_ENV=production
+ENV GT06_HOMOLOG_MODE=true
+
+# Porta TCP do protocolo GT06 (tag física conecta aqui) e porta HTTP de
+# diagnóstico (/diagnostics/gt06) — ambas configuráveis por env var, ver
+# server/gt06-listener/index.ts.
+EXPOSE 5023
+EXPOSE 5080
+
+CMD ["npm", "run", "gt06:listen"]

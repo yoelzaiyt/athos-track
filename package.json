@@ -13,6 +13,7 @@
     "api:dev": "tsx watch server/api/index.ts",
     "api:start": "tsx server/api/index.ts",
     "gt06:listen": "tsx server/gt06-listener/index.ts",
+    "gt06:homolog": "tsx watch server/gt06-listener/index.ts",
     "brgps:discover": "tsx server/brgps-sync/index.ts discover",
     "brgps:activate": "tsx server/brgps-sync/index.ts activate",
     "brgps:sync-once": "tsx server/brgps-sync/index.ts sync-once",

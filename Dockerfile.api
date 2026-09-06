@@ -1,0 +1,18 @@
+# Imagem da API própria (Express + Socket.io), server/api/index.ts.
+# Mesmo padrão do Dockerfile.gt06-homolog: roda via tsx, sem passo de build
+# separado, então precisa das devDependencies (tsx) na imagem final.
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+
+COPY server ./server
+COPY tsconfig.json ./
+
+ENV NODE_ENV=production
+
+EXPOSE 4000
+
+CMD ["npm", "run", "api:start"]

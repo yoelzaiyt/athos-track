@@ -14,18 +14,21 @@ import type {
   TrackingProvider,
 } from '../shared/TrackingProvider.ts';
 
-const PROVIDER_ROW_KEY = 'BRGPS'; // valor gravado em provider_health.provider (ver server/integrations/brgps/db.ts)
-
 export class BrgpsProvider implements TrackingProvider {
-  readonly id = 'brgps';
-
   private readonly adapter: BrGpsAdapter;
+  // Chave gravada em provider_health.provider (ver server/integrations/brgps/db.ts)
+  // — precisa ser distinta por conta BRGPS pra uma segunda conta (api_token
+  // diferente, ex: "BRGPS_2") não sobrescrever o health check da primeira.
+  private readonly providerRowKey: string;
 
   constructor(
     config: { baseUrl: string; apiToken: string },
-    private readonly healthPool: Pool
+    private readonly healthPool: Pool,
+    readonly id: string = 'brgps',
+    providerRowKey?: string
   ) {
     this.adapter = new BrGpsAdapter(new BrGpsClient(config));
+    this.providerRowKey = providerRowKey ?? id.toUpperCase();
   }
 
   async activateDevice(externalIds: string[]): Promise<void> {
@@ -56,7 +59,7 @@ export class BrgpsProvider implements TrackingProvider {
       `select status, last_success_at, last_error_at, last_error_message,
               requests_total, requests_failed, rate_limited_total
        from provider_health where provider = $1`,
-      [PROVIDER_ROW_KEY]
+      [this.providerRowKey]
     );
     const row = rows[0];
     if (!row) {
@@ -65,7 +68,7 @@ export class BrgpsProvider implements TrackingProvider {
         status: 'UNAVAILABLE',
         lastSuccessAt: null,
         lastErrorAt: null,
-        lastErrorMessage: 'Nenhum ciclo de sync rodou ainda (provider_health sem linha para BRGPS).',
+        lastErrorMessage: `Nenhum ciclo de sync rodou ainda (provider_health sem linha para ${this.providerRowKey}).`,
         requestsTotal: 0,
         requestsFailed: 0,
         rateLimitedTotal: 0,

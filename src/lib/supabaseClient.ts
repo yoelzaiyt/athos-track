@@ -6,14 +6,14 @@
 // reescrever AssetContext.tsx/AuthContext.tsx/mappers.ts inteiros — eles
 // continuam chamando exatamente os mesmos métodos em cima de `supabase`.
 //
-// Backend real: server/api (Express + Postgres do Railway). Ver
-// docs/deploy/RAILWAY_VERCEL.md.
+// Backend real: server/api (Express + Postgres do Supabase, ver DATABASE_URL
+// em .env.example).
 
 import { io, type Socket } from 'socket.io-client';
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 if (!API_URL) {
-  throw new Error('Missing VITE_API_URL — set it in .env (URL da API Express, ex: https://sua-api.up.railway.app).');
+  throw new Error('Missing VITE_API_URL — set it in .env (URL da API Express, ex: http://localhost:4000 em dev).');
 }
 
 const TOKEN_STORAGE_KEY = 'athos_auth_token';

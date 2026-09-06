@@ -42,9 +42,16 @@ export interface ApplyPositionResult {
 
 export class BrGpsRepository {
   private client: Client;
+  // Chave gravada em provider_devices.provider/provider_health.provider —
+  // permite uma segunda conta BRGPS (mesmo protocolo, api_token diferente,
+  // ex: "BRGPS_2") coexistir sem colidir com os dispositivos/health da conta
+  // original ("BRGPS"). Ver server/api/index.ts onde as duas instâncias são
+  // registradas.
+  private readonly providerKey: string;
 
-  constructor(connectionString: string) {
+  constructor(connectionString: string, providerKey = 'BRGPS') {
     this.client = new Client({ connectionString });
+    this.providerKey = providerKey;
   }
 
   async connect(): Promise<void> {
@@ -61,9 +68,9 @@ export class BrGpsRepository {
     if (externalIds.length === 0) return 0;
     const { rowCount } = await this.client.query(
       `insert into provider_devices (provider, external_device_id)
-       select 'BRGPS', unnest($1::text[])
+       select $1, unnest($2::text[])
        on conflict (provider, external_device_id) do nothing`,
-      [externalIds]
+      [this.providerKey, externalIds]
     );
     return rowCount ?? 0;
   }
@@ -71,16 +78,17 @@ export class BrGpsRepository {
   async markDevicesActived(externalIds: string[], actived: boolean): Promise<void> {
     if (externalIds.length === 0) return;
     await this.client.query(
-      `update provider_devices set is_actived = $1 where provider = 'BRGPS' and external_device_id = any($2::text[])`,
-      [actived, externalIds]
+      `update provider_devices set is_actived = $1 where provider = $2 and external_device_id = any($3::text[])`,
+      [actived, this.providerKey, externalIds]
     );
   }
 
   async listUnassignedDevices(): Promise<{ id: string; externalDeviceId: string; isActived: boolean; discoveredAt: string }[]> {
     const { rows } = await this.client.query(
       `select id, external_device_id, is_actived, discovered_at
-       from provider_devices where provider = 'BRGPS' and status = 'UNASSIGNED'
-       order by discovered_at desc`
+       from provider_devices where provider = $1 and status = 'UNASSIGNED'
+       order by discovered_at desc`,
+      [this.providerKey]
     );
     return rows.map((r) => ({
       id: r.id,
@@ -100,7 +108,8 @@ export class BrGpsRepository {
               a.status, a.geofence_id, a.geofence_name
        from provider_devices pd
        join assets a on a.id = pd.asset_id
-       where pd.provider = 'BRGPS' and pd.status = 'ASSIGNED' and pd.is_actived = true`
+       where pd.provider = $1 and pd.status = 'ASSIGNED' and pd.is_actived = true`,
+      [this.providerKey]
     );
     return rows.map((r) => ({
       providerDeviceId: r.provider_device_id,
@@ -240,7 +249,7 @@ export class BrGpsRepository {
     const inserted = await this.client.query(
       `insert into asset_route_points
          (asset_id, latitude, longitude, speed, event, recorded_at, provider, provider_published_at, distance_raw, battery_raw, fingerprint)
-       values ($1, $2, $3, 0, $4, $5, 'BRGPS', $6, $7, $8, $9)
+       values ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10)
        on conflict (fingerprint) where fingerprint is not null do nothing
        returning id`,
       [
@@ -249,6 +258,7 @@ export class BrGpsRepository {
         position.longitude,
         geofenceEvent ? (geofenceEvent.type === 'exit' ? 'geofence_exit' : 'geofence_entry') : null,
         position.occurredAt.toISOString(),
+        this.providerKey,
         position.providerPublishedAt.toISOString(),
         position.providerDistanceRaw ?? null,
         position.batteryRaw,
@@ -333,10 +343,10 @@ export class BrGpsRepository {
     await this.client.query(
       `insert into provider_health (provider, status, last_success_at, last_error_at, last_error_message,
          requests_total, requests_failed, rate_limited_total, positions_received_total, positions_deduplicated_total, updated_at)
-       values ('BRGPS', $1,
-         case when $2 then now() else null end,
-         case when $2 then null else now() end,
-         $3, $4, $5, $6, $7, $8, now())
+       values ($1, $2,
+         case when $3 then now() else null end,
+         case when $3 then null else now() end,
+         $4, $5, $6, $7, $8, $9, now())
        on conflict (provider) do update set
          status = excluded.status,
          last_success_at = coalesce(excluded.last_success_at, provider_health.last_success_at),
@@ -349,6 +359,7 @@ export class BrGpsRepository {
          positions_deduplicated_total = provider_health.positions_deduplicated_total + excluded.positions_deduplicated_total,
          updated_at = now()`,
       [
+        this.providerKey,
         patch.status,
         patch.success ?? false,
         patch.errorMessage ?? null,
@@ -371,8 +382,8 @@ export class BrGpsRepository {
               a.status, a.geofence_id, a.geofence_name
        from provider_devices pd
        join assets a on a.id = pd.asset_id
-       where pd.provider = 'BRGPS' and pd.external_device_id = $1`,
-      [externalDeviceId]
+       where pd.provider = $1 and pd.external_device_id = $2`,
+      [this.providerKey, externalDeviceId]
     );
     const r = rows[0];
     if (!r) return null;

@@ -1,0 +1,32 @@
+# App da API própria (Express + Socket.io) — server/api/index.ts.
+# Backend do frontend em athos-track-eight.vercel.app (VITE_API_URL).
+app = "athos-track-api"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile.api"
+
+[env]
+  PORT = "4000"
+  CORS_ORIGIN = "https://athos-track-eight.vercel.app,https://athos-track-yoelzaiyts-projects.vercel.app,https://athos-track-git-master-yoelzaiyts-projects.vercel.app"
+
+[[services]]
+  internal_port = 4000
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
