@@ -217,6 +217,10 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   // render — seguro mutar aqui).
   const assetsRef = useRef<AssetDevice[]>([]);
   const clustersRef = useRef<L.Marker[]>([]);
+  // Chave (IDs ordenados) do grupo de cluster com popup de lista aberto no
+  // momento — sobrevive ao rebuild dos marcadores de cluster a cada tick de
+  // realtime, pra reabrir o popup automaticamente em vez de fechá-lo sozinho.
+  const openClusterPopupKeyRef = useRef<string | null>(null);
   const geofenceLayersRef = useRef<L.Layer[]>([]);
   const routeLayersRef = useRef<L.Layer[]>([]);
   const stoppageLayersRef = useRef<L.Layer[]>([]);
@@ -500,6 +504,14 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       map.on('zoomend', () => {
         mapProvider.savePreferences({ zoom: map.getZoom() });
         setMapZoom(map.getZoom());
+      });
+
+      // Clique no fundo do mapa (não num marcador/cluster) fecha o popup de
+      // lista de cluster que porventura esteja aberto e para de reabri-lo nos
+      // próximos rebuilds — sem isso, uma vez aberta, a lista voltava sozinha
+      // a cada tick de realtime mesmo depois do usuário fechar clicando fora.
+      map.on('click', () => {
+        openClusterPopupKeyRef.current = null;
       });
 
       mapInstanceRef.current = map;
@@ -1073,18 +1085,78 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   // Achado real: este efeito depende de `displayAssets` (array novo a cada
   // tick de realtime, mesmo que só 1 de 12 ativos tenha mudado) e limpava +
   // recriava TODOS os marcadores em todo tick. Corrigido pro caminho sem
-  // cluster (o caso real hoje, 12 ativos — clustering só liga acima de 25):
-  // atualiza posição/ícone/tooltip do marcador já existente in-place
+  // cluster. Atualiza posição/ícone/tooltip do marcador já existente in-place
   // (`setLatLng`/`setIcon`), só cria/remove marcador de fato quando um ativo
   // entra/sai do conjunto filtrado. O caminho com cluster continua
-  // recalculando tudo (agrupar por proximidade é inerentemente global) — não
-  // é o caso reportado, e um recompute ali é aceitável.
+  // recalculando tudo (agrupar por proximidade é inerentemente global) quando
+  // há sobreposição de verdade.
+  //
+  // Achado real ao vivo (2026-09-10, auditoria das 10 tags Zaffari): o gate
+  // antigo (`displayAssets.length > 25 && currentZoom < 12`) nunca ativava
+  // com 10 ativos — então 6 das 10 tags, que retornam a MESMA coordenada
+  // exata do fornecedor (0,00m de diferença entre elas, confirmado por
+  // Haversine — ver MAP-MARKER-VISIBILITY.md), ficavam com marcadores
+  // empilhados exatamente um em cima do outro, indistinguíveis, dando a
+  // impressão de "só ~5 tags" quando as 10 estavam recebendo dado real.
+  // Corrigido: agrupamento por proximidade em pixels roda SEMPRE (não só
+  // acima de 25 ativos) — zoom não é o problema aqui mesmo, já que
+  // coordenadas IDÊNTICAS ficam no mesmo pixel em qualquer nível de zoom.
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
     const currentZoom = map.getZoom();
-    const enableClusters = layers.clusters && displayAssets.length > 25 && currentZoom < 12;
+
+    // Achado real ao testar (2026-09-10): remover o marcador de cluster
+    // ANTIGO (passo de limpeza abaixo) dispara 'popupclose' nele, que zerava
+    // openClusterPopupKeyRef ANTES do marcador NOVO conseguir checar se devia
+    // reabrir — corrida entre "Leaflet fechando o popup de quem está sendo
+    // removido" e "decidir se reabre no substituto". Snapshot da intenção
+    // ANTES de qualquer remoção evita a corrida.
+    const keyToReopenAfterRebuild = openClusterPopupKeyRef.current;
+
+    // Agrupamento por distância real em pixels na tela (não por grade fixa em graus),
+    // evitando que ativos próximos caiam em clusters vizinhos por estarem nos dois
+    // lados de uma borda de grade. Flood-fill simples sobre a matriz de distâncias.
+    // Roda sempre que houver ao menos 2 ativos com posição válida — é barato pra
+    // dezenas de ativos, e é o único jeito de detectar sobreposição real (não só
+    // "muitos ativos", mas "dois ativos no mesmo pixel").
+    const CLUSTER_RADIUS_PX = 48;
+    const validAssets = displayAssets.filter(
+      (a) =>
+        a.telemetry.latitude != null &&
+        a.telemetry.longitude != null &&
+        !isNaN(a.telemetry.latitude) &&
+        !isNaN(a.telemetry.longitude)
+    );
+    const screenPoints = validAssets.map((asset) =>
+      map.latLngToContainerPoint([asset.telemetry.latitude, asset.telemetry.longitude])
+    );
+
+    const visited = new Array(validAssets.length).fill(false);
+    const clusterGroups: AssetDevice[][] = [];
+
+    for (let i = 0; i < validAssets.length; i++) {
+      if (visited[i]) continue;
+      visited[i] = true;
+      const stack = [i];
+      const groupIndices: number[] = [];
+
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        groupIndices.push(current);
+        for (let j = 0; j < validAssets.length; j++) {
+          if (!visited[j] && screenPoints[current].distanceTo(screenPoints[j]) <= CLUSTER_RADIUS_PX) {
+            visited[j] = true;
+            stack.push(j);
+          }
+        }
+      }
+
+      clusterGroups.push(groupIndices.map((idx) => validAssets[idx]));
+    }
+
+    const enableClusters = layers.clusters && clusterGroups.some((g) => g.length > 1);
 
     if (enableClusters || clustersRef.current.length > 0) {
       // Clear old markers — caminho com cluster (ou saindo dele): recompute total.
@@ -1118,50 +1190,13 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     }
 
     if (enableClusters) {
-      // Agrupamento por distância real em pixels na tela (não por grade fixa em graus),
-      // evitando que ativos próximos caiam em clusters vizinhos por estarem nos dois
-      // lados de uma borda de grade. Flood-fill simples sobre a matriz de distâncias.
-      const CLUSTER_RADIUS_PX = 48;
-      const validAssets = displayAssets.filter(
-        (a) =>
-          a.telemetry.latitude != null &&
-          a.telemetry.longitude != null &&
-          !isNaN(a.telemetry.latitude) &&
-          !isNaN(a.telemetry.longitude)
-      );
-      const screenPoints = validAssets.map((asset) =>
-        map.latLngToContainerPoint([asset.telemetry.latitude, asset.telemetry.longitude])
-      );
-
-      const visited = new Array(validAssets.length).fill(false);
-      const clusterGroups: AssetDevice[][] = [];
-
-      for (let i = 0; i < validAssets.length; i++) {
-        if (visited[i]) continue;
-        visited[i] = true;
-        const stack = [i];
-        const groupIndices: number[] = [];
-
-        while (stack.length > 0) {
-          const current = stack.pop()!;
-          groupIndices.push(current);
-          for (let j = 0; j < validAssets.length; j++) {
-            if (!visited[j] && screenPoints[current].distanceTo(screenPoints[j]) <= CLUSTER_RADIUS_PX) {
-              visited[j] = true;
-              stack.push(j);
-            }
-          }
-        }
-
-        clusterGroups.push(groupIndices.map((idx) => validAssets[idx]));
-      }
-
       clusterGroups.forEach((clusterAssets) => {
         if (clusterAssets.length === 1) {
           const asset = clusterAssets[0];
           upsertAssetMarker(asset, map);
         } else {
-          // Render cluster badge
+          // Render cluster badge — mostra a contagem real (seção 29:
+          // "[ 6 ]" e não um ícone único, mesmo quando os 6 estão no mesmo pixel).
           const avgLat =
             clusterAssets.reduce((acc, a) => acc + a.telemetry.latitude, 0) /
             clusterAssets.length;
@@ -1173,9 +1208,93 @@ export const AssetMap: React.FC<AssetMapProps> = ({
           const icon = createClusterLeafletIcon(clusterAssets.length, theme.primary);
 
           const clusterMarker = L.marker([avgLat, avgLng], { icon }).addTo(map);
+
+          // Maior distância real (metros) entre dois membros do grupo — se for
+          // pequena o bastante (coordenadas essencialmente idênticas vindas do
+          // fornecedor), dar zoom NÃO separa os marcadores (ficam sempre no
+          // mesmo pixel, em qualquer nível de zoom) — nesse caso mostra uma
+          // lista (seção 3/28: "spiderfy ou lista equivalente", nunca alterar
+          // a coordenada real só pra separar visualmente). Se o grupo só está
+          // sobreposto por estar zoomed out, zoom resolve de verdade.
+          let maxSpreadMeters = 0;
+          for (let i = 0; i < clusterAssets.length; i++) {
+            for (let j = i + 1; j < clusterAssets.length; j++) {
+              const d = haversineMeters(
+                [clusterAssets[i].telemetry.latitude, clusterAssets[i].telemetry.longitude],
+                [clusterAssets[j].telemetry.latitude, clusterAssets[j].telemetry.longitude]
+              );
+              if (d > maxSpreadMeters) maxSpreadMeters = d;
+            }
+          }
+          const ZOOM_WONT_SEPARATE_METERS = 15;
+          // Chave estável do grupo (não do marcador — o marcador é recriado a
+          // cada tick de realtime nesta branch). Usada pra reabrir o popup
+          // automaticamente se ele estava aberto antes deste rebuild — sem
+          // isso, qualquer posição nova chegando (a cada poucos segundos,
+          // seção 17) fechava a lista sozinha no meio da leitura do usuário.
+          const groupKey = clusterAssets.map((a) => a.id).sort().join(',');
+
+          const openListPopup = () => {
+            const listHtml = `<div style="font-family: sans-serif; font-size: 12px; max-width: 220px;">
+                <div style="font-weight:700; margin-bottom:6px;">${clusterAssets.length} ativos nesta coordenada</div>
+                ${clusterAssets
+                  .map(
+                    (a) =>
+                      `<div data-asset-id="${a.id}" class="athos-cluster-list-item" style="padding:4px 6px; margin-bottom:2px; border-radius:6px; cursor:pointer; background:rgba(6,182,212,0.08);">
+                        <strong>${a.code}</strong> — ${a.name}
+                      </div>`
+                  )
+                  .join('')}
+              </div>`;
+            clusterMarker.bindPopup(listHtml, { maxWidth: 260 }).openPopup();
+            openClusterPopupKeyRef.current = groupKey;
+            // Delegação de clique nos itens da lista — o popup é HTML cru
+            // (Leaflet não dá bind de evento React nele), então liga o
+            // handler depois de abrir.
+            setTimeout(() => {
+              document.querySelectorAll('.athos-cluster-list-item').forEach((el) => {
+                el.addEventListener(
+                  'click',
+                  () => {
+                    const assetId = el.getAttribute('data-asset-id');
+                    const found = clusterAssets.find((a) => a.id === assetId);
+                    if (found) {
+                      setActiveDrawerAsset(found);
+                      if (onSelectAsset) onSelectAsset(found);
+                      setSelectedAsset(found);
+                      if (openClusterPopupKeyRef.current === groupKey) openClusterPopupKeyRef.current = null;
+                      map.closePopup();
+                    }
+                  },
+                  { once: true }
+                );
+              });
+            }, 0);
+          };
+
           clusterMarker.on('click', () => {
-            map.flyTo([avgLat, avgLng], currentZoom + 3, { duration: 0.8 });
+            if (maxSpreadMeters <= ZOOM_WONT_SEPARATE_METERS) {
+              openListPopup();
+            } else {
+              map.flyTo([avgLat, avgLng], currentZoom + 3, { duration: 0.8 });
+            }
           });
+          // Sem handler de 'popupclose' aqui de propósito: remover o marcador
+          // ANTIGO no passo de limpeza acima também fecha o popup dele (é o
+          // Leaflet destruindo o marcador), o que dispararia 'popupclose' e
+          // zeraria openClusterPopupKeyRef ANTES do marcador NOVO checar se
+          // deveria reabrir — corrida real encontrada testando ao vivo. A
+          // referência só é limpa por ação explícita do usuário (escolher um
+          // item da lista, ver openListPopup acima).
+
+          // Sobreviveu ao rebuild deste tick com o mesmo grupo de ativos e o
+          // popup estava aberto — reabre na hora, sem esperar novo clique.
+          // Usa o SNAPSHOT tirado antes da limpeza, não a ref ao vivo (que
+          // pode ter sido tocada por teardown de outro marcador neste mesmo
+          // ciclo do efeito).
+          if (maxSpreadMeters <= ZOOM_WONT_SEPARATE_METERS && keyToReopenAfterRebuild === groupKey) {
+            openListPopup();
+          }
 
           clustersRef.current.push(clusterMarker);
         }
