@@ -55,9 +55,18 @@ export const BoxesModule: React.FC = () => {
       ),
     },
     {
+      // Mesma correção do CartsModule.tsx: geofenceName é o nome da cerca
+      // virtual, não a posição — mostrar coordenada real quando existir,
+      // nunca inventar (seção "MAPA" do brief).
       header: 'Última Localização',
       accessor: (row) => (
-        <span className="text-[11px] text-slate-600 dark:text-slate-300">{row.geofenceName || '—'}</span>
+        <span className="text-[11px] text-slate-600 dark:text-slate-300">
+          {row.telemetry.latitude && row.telemetry.longitude
+            ? `${row.telemetry.latitude.toFixed(5)}, ${row.telemetry.longitude.toFixed(5)}`
+            : row.provider
+              ? 'Aguardando primeira localização real'
+              : row.geofenceName || '—'}
+        </span>
       ),
     },
     {

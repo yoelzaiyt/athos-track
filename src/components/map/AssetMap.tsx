@@ -1890,7 +1890,13 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Wifi className="w-3.5 h-3.5 text-amber-400" /> Sinal Telemetria
                 </span>
                 <span className="font-mono text-emerald-400 font-semibold">
-                  {activeDrawerAsset.telemetry.signalStrength}% (4G LTE)
+                  {activeDrawerAsset.provider && !activeDrawerAsset.telemetry.signalStrength
+                    ? // Provider real (BRGPS/BRGPS_2) nunca informa % de sinal nem
+                      // rede — "(4G LTE)" fixo era fabricado (o protocolo real do
+                      // asset pode ser BLE Gateway, não celular). Achado ao vivo
+                      // em 2026-09-10.
+                      'Não informado pelo fornecedor'
+                    : `${activeDrawerAsset.telemetry.signalStrength}% (4G LTE)`}
                 </span>
               </div>
 
@@ -1931,8 +1937,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Locate className="w-3.5 h-3.5 text-cyan-400" /> Fonte de Posição
                 </span>
                 <span className="font-mono text-cyan-300 font-semibold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                  {activeDrawerAsset.telemetry.positionSource || 'GPS Satellite'} (±
-                  {activeDrawerAsset.telemetry.gpsAccuracy || 8}m)
+                  {activeDrawerAsset.telemetry.positionSource || 'GPS Satellite'}
+                  {/* "|| 8m" fabricava uma precisão que o fornecedor não
+                      informou (BRGPS não retorna accuracy) — omitir em vez de
+                      inventar (achado ao vivo em 2026-09-10). */}
+                  {activeDrawerAsset.telemetry.gpsAccuracy ? ` (±${activeDrawerAsset.telemetry.gpsAccuracy}m)` : ''}
                 </span>
               </div>
 

@@ -67,7 +67,7 @@ interface AssetContextType {
   trafficSegments: TrafficSegment[];
   pois: PointOfInterest[];
   providerDevices: ProviderDevice[];
-  providerHealth: ProviderHealth | null;
+  providerHealth: ProviderHealth[];
   integrations: SystemIntegration[];
   users: UserProfile[];
   isLoading: boolean;
@@ -164,7 +164,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [trafficSegments, setTrafficSegments] = useState<TrafficSegment[]>([]);
   const [pois, setPois] = useState<PointOfInterest[]>([]);
   const [providerDevices, setProviderDevices] = useState<ProviderDevice[]>([]);
-  const [providerHealth, setProviderHealth] = useState<ProviderHealth | null>(null);
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([]);
   const [integrations, setIntegrations] = useState<SystemIntegration[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -203,7 +203,11 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         supabase.from('traffic_segments').select('*'),
         supabase.from('points_of_interest').select('*'),
         supabase.from('provider_devices').select('*').order('discovered_at', { ascending: false }),
-        supabase.from('provider_health').select('*').eq('provider', 'BRGPS').maybeSingle(),
+        // Sem filtro de provider: BRGPS (conta 1) e BRGPS_2 (conta 2, China,
+        // ativada em 2026-09-10) são contas independentes, cada uma com sua
+        // própria linha de health — filtrar por 'BRGPS' escondia o status
+        // real da conta que hoje serve as 10 tags Zaffari.
+        supabase.from('provider_health').select('*'),
         supabase.from('system_integrations').select('*').order('created_at', { ascending: false }),
         supabase.from('user_profiles').select('*').order('name'),
       ]);
@@ -248,7 +252,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setTrafficSegments((trafficRes.data ?? []).map(rowToTrafficSegment));
       setPois((poisRes.data ?? []).map(rowToPoi));
       setProviderDevices((providerDevicesRes.data ?? []).map(rowToProviderDevice));
-      setProviderHealth(providerHealthRes.data ? rowToProviderHealth(providerHealthRes.data) : null);
+      setProviderHealth((providerHealthRes.data ?? []).map(rowToProviderHealth));
       setIntegrations((integrationsRes.data ?? []).map(rowToIntegration));
       setUsers((usersRes.data ?? []).map(rowToUserProfile));
       setIsLoading(false);
@@ -895,7 +899,20 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const moving = scoped.filter((a) => a.status === 'moving').length;
     const stopped = scoped.filter((a) => a.status === 'stopped' || a.status === 'online').length;
     const outOfGeofence = scoped.filter((a) => a.status === 'out_of_geofence').length;
-    const lowBattery = scoped.filter((a) => a.status === 'low_battery' || a.telemetry.batteryLevel < 20).length;
+    // Mesmo critério já usado em CartsModule.tsx (lowBat): categoria real do
+    // fornecedor quando disponível, e `?? 100` no percentual — sem isso,
+    // `batteryLevel < 20` com `batteryLevel = null` (BRGPS real só manda
+    // categoria/raw, nunca o percentual) vira `null < 20` -> `true` em JS
+    // (null vira 0 em comparação relacional), marcando toda tag real com
+    // bateria alta como "bateria baixa". Achado ao vivo em 2026-09-10: 11/12
+    // tags reais (categoria HIGH) apareciam erradas no Dashboard por isso.
+    const lowBattery = scoped.filter(
+      (a) =>
+        a.status === 'low_battery' ||
+        a.telemetry.batteryLevelCategory === 'CRITICAL' ||
+        a.telemetry.batteryLevelCategory === 'LOW' ||
+        (a.telemetry.batteryLevel ?? 100) < 20
+    ).length;
     const criticalAlertsCount = alerts.filter((a) => !a.acknowledged && a.severity === 'critical').length;
 
     return {

@@ -104,20 +104,36 @@ export const CartsModule: React.FC = () => {
       },
     },
     {
+      // geofenceName é o nome da cerca virtual (quando o asset tem uma
+      // configurada), não a localização em si — pra um provider real
+      // (BRGPS/BRGPS_2), mostrar a coordenada real recebida. Sem posição
+      // real ainda, nunca inventar coordenada (seção "MAPA" do brief) — só
+      // "Aguardando primeira localização real".
       header: 'Última Localização',
       accessor: (row) => (
         <div className="text-[11px] text-slate-300 flex items-center gap-1">
           <MapPin className="w-3 h-3 text-cyan-400" />
-          <span>{row.geofenceName || '—'}</span>
+          <span>
+            {row.telemetry.latitude && row.telemetry.longitude
+              ? `${row.telemetry.latitude.toFixed(5)}, ${row.telemetry.longitude.toFixed(5)}`
+              : row.provider
+                ? 'Aguardando primeira localização real'
+                : row.geofenceName || '—'}
+          </span>
         </div>
       ),
     },
     {
+      // provider truthy = veio de um fornecedor real (BRGPS ou BRGPS_2, a
+      // segunda conta ativada em 2026-09-10 — ver docs/HARDWARE-CATALOG.md).
+      // Comparar com a string literal 'BRGPS' excluía BRGPS_2 e mostrava
+      // "Simulado" pra tags com posição real de verdade (achado ao vivo
+      // nesta sessão, com as 10 tags Zaffari).
       header: 'Origem',
       accessor: (row) =>
-        row.provider === 'BRGPS' ? (
+        row.provider ? (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/20 rounded">
-            <Satellite className="w-3 h-3" /> API BRGPS
+            <Satellite className="w-3 h-3" /> API {row.provider.replace('_2', ' (conta 2)')}
           </span>
         ) : (
           <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">Simulado</span>

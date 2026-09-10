@@ -18,10 +18,14 @@ const UnassignedBrgpsDevicesPanel: React.FC = () => {
   const { providerDevices, providerHealth, assets, linkProviderDeviceToAsset } = useAssets();
   const [selectedAssetByDevice, setSelectedAssetByDevice] = useState<Record<string, string>>({});
 
-  const unassigned = providerDevices.filter((d) => d.provider === 'BRGPS' && d.status === 'UNASSIGNED');
+  // BRGPS_2 é a segunda conta do mesmo fornecedor (endpoint China, ativada
+  // em 2026-09-10 — ver docs/HARDWARE-CATALOG.md) — precisa aparecer aqui
+  // igual à conta 1, senão um dispositivo novo descoberto nela nunca
+  // aparece pra vinculação manual.
+  const unassigned = providerDevices.filter((d) => d.provider?.startsWith('BRGPS') && d.status === 'UNASSIGNED');
   const linkableAssets = assets.filter((a) => !a.provider);
 
-  if (unassigned.length === 0 && !providerHealth) return null;
+  if (unassigned.length === 0 && providerHealth.length === 0) return null;
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3 transition-colors">
@@ -30,13 +34,16 @@ const UnassignedBrgpsDevicesPanel: React.FC = () => {
           <Satellite className="w-4 h-4" />
           <span>Dispositivos BRGPS Descobertos (Provider Real)</span>
         </div>
-        {providerHealth && (
-          <span
-            className={`px-2.5 py-1 text-[10px] font-bold font-mono rounded-full uppercase border ${PROVIDER_HEALTH_LABEL[providerHealth.status]?.className}`}
-          >
-            Provider BRGPS: {PROVIDER_HEALTH_LABEL[providerHealth.status]?.label ?? providerHealth.status}
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {providerHealth.map((h) => (
+            <span
+              key={h.provider}
+              className={`px-2.5 py-1 text-[10px] font-bold font-mono rounded-full uppercase border ${PROVIDER_HEALTH_LABEL[h.status]?.className}`}
+            >
+              {h.provider}: {PROVIDER_HEALTH_LABEL[h.status]?.label ?? h.status}
+            </span>
+          ))}
+        </div>
       </div>
 
       {unassigned.length === 0 ? (

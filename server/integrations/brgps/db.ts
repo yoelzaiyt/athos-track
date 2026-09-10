@@ -156,11 +156,17 @@ export class BrGpsRepository {
 
     if (speculativeIsNewer) {
       // Uma posição nova de verdade significa que o dispositivo está se
-      // comunicando agora — "offline" nunca é a resposta certa nesse ponto.
-      // Sem isso, um asset sem geofence configurada (o único jeito de sair
-      // de "offline" antes desta correção) recebia posição real pra sempre
-      // e continuava marcado como offline no resto do sistema.
-      let nextStatus: string = (current?.status ?? target.status) === 'offline'
+      // comunicando agora — nem "offline" nem "awaiting_first_signal" são a
+      // resposta certa nesse ponto. Sem isso, um asset sem geofence
+      // configurada (o único jeito de sair desses dois estados antes desta
+      // correção) recebia posição real pra sempre e continuava marcado como
+      // desconectado no resto do sistema. Achado ao vivo em 2026-09-10: as
+      // 10 tags Zaffari receberam posição real (sync-once, aplicadas=10) mas
+      // ficaram presas em 'awaiting_first_signal' até esta correção — o fix
+      // anterior (commit 3516bf9) só cobria 'offline', não o status novo
+      // introduzido na mesma sessão.
+      const disconnectedStatuses = new Set(['offline', 'awaiting_first_signal']);
+      let nextStatus: string = disconnectedStatuses.has(current?.status ?? target.status)
         ? 'online'
         : (current?.status ?? target.status);
 
