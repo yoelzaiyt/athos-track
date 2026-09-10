@@ -60,7 +60,21 @@ async function resolveClientId(table: string, row: Record<string, unknown> | nul
 export async function startRealtimeBridge(io: SocketIOServer) {
   io.use(authenticateSocket);
 
-  const connectionString = process.env.DATABASE_URL!;
+  // LISTEN/NOTIFY precisa de uma conexão de sessão dedicada — PgBouncer em
+  // modo transação (DATABASE_URL, porta 6543 no Supabase) multiplexa a
+  // conexão física entre clientes distintos a cada transação, então um
+  // NOTIFY disparado depois do LISTEN nunca chega no socket que fez o
+  // LISTEN. Achado ao vivo em 2026-09-10: testado par a par (mesmo UPDATE
+  // real em assets), a conexão via DATABASE_URL nunca recebeu a
+  // notificação; a mesma LISTEN via DIRECT_URL (porta 5432, sem pooler)
+  // recebeu na hora. Esse era o motivo de nenhuma atualização de posição
+  // chegar no frontend sem F5 manual — o UPDATE/trigger/NOTIFY sempre
+  // rodavam certo, só a entrega pro processo da API é que se perdia no
+  // pooler.
+  const connectionString = process.env.DIRECT_URL;
+  if (!connectionString) {
+    throw new Error('[realtime] DIRECT_URL não definido — LISTEN/NOTIFY precisa de conexão sem pooler (ver server/api/realtime.ts).');
+  }
   const listener = new Client({
     connectionString,
     ssl: connectionString.includes('railway') || connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
