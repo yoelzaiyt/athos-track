@@ -47,7 +47,7 @@ const ALLOWED_TABLES = new Set([
   'system_integrations', 'user_profiles', 'company_clients', 'company_units',
   'homologation_requests', 'homologation_devices', 'homologation_events', 'homologation_reports',
   'recovery_occurrences', 'recovery_timeline_events', 'asset_route_points',
-  'audit_logs',
+  'audit_logs', 'tag_tenant_transfers',
 ]);
 
 const IDENTIFIER_RE = /^[a-z_][a-z0-9_]*$/;
@@ -114,6 +114,13 @@ const DIRECT_TENANT_COLUMN: Record<string, string> = {
   // grava/edita via este proxy — só server/api/audit.ts (código confiável),
   // pra ninguém conseguir forjar uma entrada de auditoria.
   audit_logs: 'client_id',
+  // asset_route_points: migration 20260910100000 — client_id PRÓPRIO da
+  // linha (tenant vigente no momento em que o ponto foi gravado), não o
+  // client_id ATUAL do asset. Antes ficava em ASSET_LINKED_COLUMN (abaixo);
+  // isso vazava histórico pré-transferência pro tenant novo sempre que um
+  // asset mudasse de tenant (seção 9 do brief de integração de tags —
+  // "isolamento histórico"). Ver tag_tenant_transfers.
+  asset_route_points: 'client_id',
 };
 
 // Tabelas append-only por código de servidor — bloqueadas pra POST/PATCH/
@@ -145,7 +152,6 @@ const ASSET_LINKED_COLUMN: Record<string, string> = {
   system_alerts: 'asset_id',
   cart_recoveries: 'asset_id',
   provider_devices: 'asset_id',
-  asset_route_points: 'asset_id',
   trip_records: 'vehicle_id',
   maintenance_records: 'vehicle_id',
 };
@@ -177,6 +183,10 @@ const ADMIN_ONLY_READ_TABLES = new Set([
   // vivo) e guarda api_key de integrações (GT06/REST/MQTT/Webhooks/BLE) —
   // não pode ficar legível por qualquer autenticado.
   'system_integrations',
+  // tag_tenant_transfers: meta-dado ATHOS sobre transferência ENTRE tenants
+  // (seção 9/14 do brief de integração de tags) — não pertence a nenhum dos
+  // dois lados, só ATHOS_SUPER_ADMIN administra transferência entre clientes.
+  'tag_tenant_transfers',
 ]);
 const ADMIN_ONLY_ALL_TABLES = new Set([...ADMIN_ONLY_READ_TABLES]);
 

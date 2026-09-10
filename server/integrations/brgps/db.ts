@@ -255,12 +255,13 @@ export class BrGpsRepository {
     // disparar `geofenceEvent` duas vezes pra exatamente a mesma leitura.
     const inserted = await this.client.query(
       `insert into asset_route_points
-         (asset_id, latitude, longitude, speed, event, recorded_at, provider, provider_published_at, distance_raw, battery_raw, fingerprint)
-       values ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $10)
+         (asset_id, client_id, latitude, longitude, speed, event, recorded_at, provider, provider_published_at, distance_raw, battery_raw, fingerprint)
+       values ($1, $2, $3, $4, 0, $5, $6, $7, $8, $9, $10, $11)
        on conflict (fingerprint) where fingerprint is not null do nothing
        returning id`,
       [
         target.assetId,
+        target.clientId,
         position.latitude,
         position.longitude,
         geofenceEvent ? (geofenceEvent.type === 'exit' ? 'geofence_exit' : 'geofence_entry') : null,
