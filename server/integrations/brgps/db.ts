@@ -155,7 +155,14 @@ export class BrGpsRepository {
     let isNewer = false;
 
     if (speculativeIsNewer) {
-      let nextStatus: string = current?.status ?? target.status;
+      // Uma posição nova de verdade significa que o dispositivo está se
+      // comunicando agora — "offline" nunca é a resposta certa nesse ponto.
+      // Sem isso, um asset sem geofence configurada (o único jeito de sair
+      // de "offline" antes desta correção) recebia posição real pra sempre
+      // e continuava marcado como offline no resto do sistema.
+      let nextStatus: string = (current?.status ?? target.status) === 'offline'
+        ? 'online'
+        : (current?.status ?? target.status);
 
       if (target.geofenceId) {
         const geoRow = await this.client.query(
