@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -49,6 +49,7 @@ import {
   ParkingCircle,
   Ruler,
   AlertTriangle,
+  Scan,
 } from 'lucide-react';
 import {
   AssetDevice,
@@ -208,6 +209,13 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   const overlayTileLayerRef = useRef<L.TileLayer | null>(null);
 
   const markersRef = useRef<{ [id: string]: L.Marker }>({});
+  // Marcadores agora são reaproveitados (setLatLng/setIcon) em vez de
+  // recriados a cada tick — o handler de clique é registrado só na criação,
+  // então precisa de uma forma de pegar o asset mais recente por ID em vez
+  // do objeto capturado no fechamento de quando o marcador nasceu. Ref
+  // atualizada a cada render (leitura em runtime de evento, não durante
+  // render — seguro mutar aqui).
+  const assetsRef = useRef<AssetDevice[]>([]);
   const clustersRef = useRef<L.Marker[]>([]);
   const geofenceLayersRef = useRef<L.Layer[]>([]);
   const routeLayersRef = useRef<L.Layer[]>([]);
@@ -327,6 +335,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   // Assets source
   const sourceAssets = assetsList || assets;
   const sourceGeofences = geofencesList || geofences;
+  assetsRef.current = sourceAssets;
 
   // Filtered Assets list
   const displayAssets = sourceAssets.filter((a) => {
@@ -345,6 +354,88 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     }
     return true;
   });
+
+  // Seleção sempre "ao vivo": activeDrawerAsset/selectedAssetOverride/selectedAsset
+  // são snapshots tirados no momento do clique (useState em AssetContext.tsx e
+  // aqui mesmo) — nunca são atualizados quando o realtime substitui o objeto no
+  // array `assets` por um com posição nova. Sem isso, o drawer de detalhe e o
+  // modo "seguir ativo" ficavam presos na posição de quando a tag foi
+  // selecionada, mesmo com o marcador se movendo de verdade no mapa (achado
+  // real em 2026-09-10: o marcador é sempre desenhado a partir de
+  // `displayAssets`, que É fresco, então a posição no mapa estava certa — só o
+  // painel lateral e a câmera em modo "seguir" ficavam desatualizados).
+  //
+  // `selectedAsset` (do AssetContext) é ESTADO GLOBAL — sobrevive à troca de
+  // página (ex.: selecionar um carrinho em Carrinhos e depois abrir Caixas).
+  // Sem checar se ele pertence ao `sourceAssets` desta instância do mapa, uma
+  // seleção de OUTRA página vazava aqui: o drawer abria sozinho mostrando um
+  // ativo de fora do filtro atual, e o auto-fit (efeito abaixo) achava que
+  // "tem seleção ativa" e pulava o enquadramento — achado ao vivo em
+  // 2026-09-10 testando Carrinhos -> Caixas. `activeDrawerAsset` (local) e
+  // `selectedAssetOverride` (prop explícita do chamador) não têm esse
+  // problema — só o global precisa do filtro de pertencimento.
+  const selectedAssetFromContextIsRelevant = !!selectedAsset && sourceAssets.some((a) => a.id === selectedAsset.id);
+  const selectedAssetId =
+    activeDrawerAsset?.id ??
+    selectedAssetOverride?.id ??
+    (selectedAssetFromContextIsRelevant ? selectedAsset!.id : null);
+  const liveSelectedAsset = selectedAssetId
+    ? sourceAssets.find((a) => a.id === selectedAssetId) ?? activeDrawerAsset ?? selectedAssetOverride ?? null
+    : null;
+
+  // Assets com posição real válida (nunca fabricada) — base de tudo que lida
+  // com câmera/bounds. lat/lng null (nunca recebeu sinal) é diferente de NaN.
+  const assetsWithValidPosition = displayAssets.filter(
+    (a) =>
+      a.telemetry.latitude != null &&
+      a.telemetry.longitude != null &&
+      !isNaN(a.telemetry.latitude) &&
+      !isNaN(a.telemetry.longitude)
+  );
+
+  // Assinatura do CONJUNTO de ativos visíveis (não da posição deles) — só muda
+  // quando um ativo entra/sai do filtro atual (troca de categoria/tenant/
+  // unidade/status), nunca quando um ativo já visível só muda de lat/lng. É a
+  // chave que permite auto-enquadrar ao trocar de filtro sem reenquadrar (e
+  // "pular" a câmera) a cada posição nova chegando via realtime — seção 11.
+  const visibleAssetIdsKey = useMemo(
+    () => assetsWithValidPosition.map((a) => a.id).sort().join(','),
+    [assetsWithValidPosition]
+  );
+
+  // focusAssetType/fitToVisibleAssets (seções 4/26 do brief) — genérica por
+  // design: opera sobre `displayAssets`/`assetsWithValidPosition`, que já são
+  // filtrados por category/tenant/unit/status sem nenhum "if (categoria ===
+  // cart)" hardcoded. Funciona hoje pra qualquer AssetCategory existente
+  // (cart/box/vehicle/forklift/...) e pra qualquer categoria futura sem
+  // mudança de código aqui.
+  const fitToVisibleAssets = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (assetsWithValidPosition.length === 0) return;
+    if (assetsWithValidPosition.length === 1) {
+      // Seção 27: um único ativo não usa fitBounds (zoom exagerado) — centraliza
+      // direto com um zoom fixo confortável.
+      const a = assetsWithValidPosition[0];
+      map.flyTo([a.telemetry.latitude, a.telemetry.longitude], 16, { duration: 1.0 });
+      return;
+    }
+    const bounds = L.latLngBounds(
+      assetsWithValidPosition.map((a) => [a.telemetry.latitude, a.telemetry.longitude] as [number, number])
+    );
+    // padding evita marcador colado na borda; maxZoom evita zoom absurdo quando
+    // os pontos estão muito próximos (ex.: 10 carrinhos agrupados).
+    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
+  }, [assetsWithValidPosition]);
+
+  const focusAssetType = useCallback(
+    (assetType: AssetCategory | 'all') => {
+      setFilterCategory(assetType);
+      // O fit acontece no efeito abaixo (keyed por visibleAssetIdsKey), depois
+      // que displayAssets/assetsWithValidPosition já refletirem o novo filtro.
+    },
+    []
+  );
 
   // Busca por endereço (geocoding via Nominatim/OSM, mesma família do OSRM usado em RoutingService):
   // acionada ao pressionar Enter quando a busca não encontrou nenhum ativo correspondente.
@@ -975,27 +1066,56 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     map.fitBounds(routeLine.getBounds(), { padding: [80, 80] });
   }, [navigationRoute, userPosition]);
 
-  // Render Assets & Clustering Logic
+  // Render Assets & Clustering Logic.
+  //
+  // Seção 10 do brief de navegação (2026-09-10): "quando chegar posição nova,
+  // não recriar o mapa inteiro... evitar flickering/marker duplication".
+  // Achado real: este efeito depende de `displayAssets` (array novo a cada
+  // tick de realtime, mesmo que só 1 de 12 ativos tenha mudado) e limpava +
+  // recriava TODOS os marcadores em todo tick. Corrigido pro caminho sem
+  // cluster (o caso real hoje, 12 ativos — clustering só liga acima de 25):
+  // atualiza posição/ícone/tooltip do marcador já existente in-place
+  // (`setLatLng`/`setIcon`), só cria/remove marcador de fato quando um ativo
+  // entra/sai do conjunto filtrado. O caminho com cluster continua
+  // recalculando tudo (agrupar por proximidade é inerentemente global) — não
+  // é o caso reportado, e um recompute ali é aceitável.
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    // Clear old markers
-    Object.keys(markersRef.current).forEach((id) => {
-      map.removeLayer(markersRef.current[id]);
-    });
-    markersRef.current = {};
-
-    Object.keys(accuracyCirclesRef.current).forEach((id) => {
-      map.removeLayer(accuracyCirclesRef.current[id]);
-    });
-    accuracyCirclesRef.current = {};
-
-    clustersRef.current.forEach((c) => map.removeLayer(c));
-    clustersRef.current = [];
-
     const currentZoom = map.getZoom();
     const enableClusters = layers.clusters && displayAssets.length > 25 && currentZoom < 12;
+
+    if (enableClusters || clustersRef.current.length > 0) {
+      // Clear old markers — caminho com cluster (ou saindo dele): recompute total.
+      Object.keys(markersRef.current).forEach((id) => {
+        map.removeLayer(markersRef.current[id]);
+      });
+      markersRef.current = {};
+
+      Object.keys(accuracyCirclesRef.current).forEach((id) => {
+        map.removeLayer(accuracyCirclesRef.current[id]);
+      });
+      accuracyCirclesRef.current = {};
+
+      clustersRef.current.forEach((c) => map.removeLayer(c));
+      clustersRef.current = [];
+    } else {
+      // Caminho incremental: remove só os marcadores cujo ativo saiu do
+      // conjunto filtrado atual (troca de filtro/tenant/unidade) — os que
+      // continuam são atualizados in-place dentro de upsertAssetMarker.
+      const nextIds = new Set(displayAssets.map((a) => a.id));
+      Object.keys(markersRef.current).forEach((id) => {
+        if (!nextIds.has(id)) {
+          map.removeLayer(markersRef.current[id]);
+          delete markersRef.current[id];
+          if (accuracyCirclesRef.current[id]) {
+            map.removeLayer(accuracyCirclesRef.current[id]);
+            delete accuracyCirclesRef.current[id];
+          }
+        }
+      });
+    }
 
     if (enableClusters) {
       // Agrupamento por distância real em pixels na tela (não por grade fixa em graus),
@@ -1039,7 +1159,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       clusterGroups.forEach((clusterAssets) => {
         if (clusterAssets.length === 1) {
           const asset = clusterAssets[0];
-          renderSingleAssetMarker(asset, map);
+          upsertAssetMarker(asset, map);
         } else {
           // Render cluster badge
           const avgLat =
@@ -1061,13 +1181,14 @@ export const AssetMap: React.FC<AssetMapProps> = ({
         }
       });
     } else {
-      // Render all individual asset markers
+      // Caminho incremental (sem cluster): cria só o que falta, atualiza o
+      // resto in-place.
       displayAssets.forEach((asset) => {
-        renderSingleAssetMarker(asset, map);
+        upsertAssetMarker(asset, map);
       });
     }
 
-    function renderSingleAssetMarker(asset: AssetDevice, mapInstance: L.Map) {
+    function upsertAssetMarker(asset: AssetDevice, mapInstance: L.Map) {
       const lat = asset.telemetry.latitude;
       const lng = asset.telemetry.longitude;
       // isNaN(null) é false (Number(null) === 0) — um ativo sem posição ainda
@@ -1076,9 +1197,8 @@ export const AssetMap: React.FC<AssetMapProps> = ({
       // quebra a página inteira dentro do cálculo de projeção do Leaflet.
       if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
 
-      const isSelected = (activeDrawerAsset || selectedAssetOverride || selectedAsset)?.id === asset.id;
+      const isSelected = selectedAssetId === asset.id;
 
-      // Custom Leaflet Marker Icon
       const icon = createAssetLeafletMarkerIcon({
         isSelected,
         status: asset.status,
@@ -1092,48 +1212,63 @@ export const AssetMap: React.FC<AssetMapProps> = ({
         themeMode: theme,
       });
 
-      const marker = L.marker([lat, lng], { icon }).addTo(mapInstance);
-
-      // Tooltip on Hover
       const categoryLabel = ASSET_CATEGORY_META[asset.category]?.label || asset.category;
       const statusBadge = getStatusBadgeInfo(asset.status);
       const isLight = theme === 'light';
       const tooltipBg = isLight ? '#ffffff' : '#0f172a';
       const tooltipTitleColor = isLight ? '#0f172a' : '#ffffff';
       const tooltipSubColor = isLight ? '#475569' : '#94a3b8';
-      const tooltipBorder = isLight ? '#cbd5e1' : '#334155';
-
-      marker.bindTooltip(
-        `<div style="padding: 6px 10px; font-family: sans-serif; font-size: 11px; color: ${tooltipTitleColor}; background: ${tooltipBg}; border-radius: 10px; border: 1px solid ${statusBadge.color}80; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+      const tooltipHtml = `<div style="padding: 6px 10px; font-family: sans-serif; font-size: 11px; color: ${tooltipTitleColor}; background: ${tooltipBg}; border-radius: 10px; border: 1px solid ${statusBadge.color}80; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
           <div style="font-weight: 700; color: ${tooltipTitleColor};">${asset.name} <span style="font-family: monospace; color: #0284c7;">(${asset.code})</span></div>
           <div style="color: ${tooltipSubColor}; margin-top: 2px;">${categoryLabel}</div>
           <div style="margin-top: 2px; font-weight: 700; color: ${statusBadge.color};">${statusBadge.label}</div>
           <div style="font-size: 10px; color: ${tooltipSubColor}; margin-top: 2px;">Comunicação: ${asset.telemetry.lastCommunication}</div>
-        </div>`,
-        { direction: 'top', opacity: 0.98, className: 'athos-custom-tooltip' }
-      );
+        </div>`;
 
-      marker.on('click', () => {
-        setActiveDrawerAsset(asset);
-        if (onSelectAsset) onSelectAsset(asset);
-        setSelectedAsset(asset);
-        if (isFollowing) {
-          mapInstance.panTo([lat, lng]);
-        }
-      });
-
-      markersRef.current[asset.id] = marker;
+      let marker = markersRef.current[asset.id];
+      if (marker) {
+        // Já existe: só atualiza posição/ícone/tooltip — sem remover/recriar
+        // (isso é o que elimina o "piscar" a cada posição nova).
+        marker.setLatLng([lat, lng]);
+        marker.setIcon(icon);
+        marker.setTooltipContent(tooltipHtml);
+      } else {
+        marker = L.marker([lat, lng], { icon }).addTo(mapInstance);
+        marker.bindTooltip(tooltipHtml, { direction: 'top', opacity: 0.98, className: 'athos-custom-tooltip' });
+        marker.on('click', () => {
+          // Só sinaliza a seleção — o efeito keyed por selectedAssetId cuida
+          // do flyTo (uma vez, ao trocar de alvo) e o de "seguir" cuida do
+          // panTo contínuo se isFollowing estiver ligado. Nenhum salto
+          // duplicado aqui. `assetsRef.current` (ver abaixo) garante que o
+          // clique sempre pega o asset mais recente, não uma cópia presa no
+          // fechamento do momento em que o marcador foi criado.
+          const latest = assetsRef.current.find((a) => a.id === asset.id) ?? asset;
+          setActiveDrawerAsset(latest);
+          if (onSelectAsset) onSelectAsset(latest);
+          setSelectedAsset(latest);
+        });
+        markersRef.current[asset.id] = marker;
+      }
 
       // Render GPS Accuracy Circle if layer enabled
       if (layers.gpsAccuracy && asset.telemetry.gpsAccuracy) {
-        const circle = L.circle([lat, lng], {
-          radius: asset.telemetry.gpsAccuracy || 10,
-          color: '#38bdf8',
-          fillColor: '#38bdf8',
-          fillOpacity: 0.08,
-          weight: 1,
-        }).addTo(mapInstance);
-        accuracyCirclesRef.current[asset.id] = circle;
+        const existingCircle = accuracyCirclesRef.current[asset.id];
+        if (existingCircle) {
+          existingCircle.setLatLng([lat, lng]);
+          existingCircle.setRadius(asset.telemetry.gpsAccuracy || 10);
+        } else {
+          const circle = L.circle([lat, lng], {
+            radius: asset.telemetry.gpsAccuracy || 10,
+            color: '#38bdf8',
+            fillColor: '#38bdf8',
+            fillOpacity: 0.08,
+            weight: 1,
+          }).addTo(mapInstance);
+          accuracyCirclesRef.current[asset.id] = circle;
+        }
+      } else if (accuracyCirclesRef.current[asset.id]) {
+        mapInstance.removeLayer(accuracyCirclesRef.current[asset.id]);
+        delete accuracyCirclesRef.current[asset.id];
       }
     }
   }, [
@@ -1148,19 +1283,63 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     setSelectedAsset,
   ]);
 
-  // Sync selected asset or follow mode movement
+  // Foco em UMA SELEÇÃO NOVA (clique numa tag, na lista ou na busca) — dispara
+  // só quando o ID selecionado muda, não a cada posição nova do mesmo ativo já
+  // selecionado (isso ficava só a cargo de selectedAssetOverride/selectedAsset,
+  // que nunca mudavam de referência num tick de realtime — corrigido pra usar
+  // o ID como dependência real da intenção "troquei de alvo").
+  const prevSelectedIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const target = selectedAssetOverride || selectedAsset || activeDrawerAsset;
-    if (target && mapInstanceRef.current) {
-      const lat = target.telemetry.latitude;
-      const lng = target.telemetry.longitude;
-      if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
-        mapInstanceRef.current.flyTo([lat, lng], Math.max(mapInstanceRef.current.getZoom(), 15), {
-          duration: 1.0,
-        });
-      }
+    if (!selectedAssetId || selectedAssetId === prevSelectedIdRef.current) {
+      prevSelectedIdRef.current = selectedAssetId;
+      return;
     }
-  }, [selectedAssetOverride, selectedAsset]);
+    prevSelectedIdRef.current = selectedAssetId;
+    const map = mapInstanceRef.current;
+    if (!map || !liveSelectedAsset) return;
+    const lat = liveSelectedAsset.telemetry.latitude;
+    const lng = liveSelectedAsset.telemetry.longitude;
+    // Seção 1: tag sem posição real nunca leva a câmera pra coordenada default
+    // (lat/lng null aqui simplesmente não navega — o drawer mostra a mensagem
+    // "Sem localização real disponível", ver JSX do drawer).
+    if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 1.0 });
+  }, [selectedAssetId, liveSelectedAsset]);
+
+  // Modo "seguir ativo" (seção 12) — câmera acompanha SÓ quando isFollowing
+  // está ligado, reagindo à posição real do ativo selecionado mudando (não ao
+  // objeto inteiro, pra não reagir a updates de bateria/status sem mudança de
+  // lat/lng). panTo (não flyTo): mantém o zoom do usuário, só desliza o centro
+  // — evita o "salto" de câmera que flyTo com zoom fixo causaria a cada tick.
+  const followedLat = liveSelectedAsset?.telemetry.latitude ?? null;
+  const followedLng = liveSelectedAsset?.telemetry.longitude ?? null;
+  useEffect(() => {
+    if (!isFollowing) return;
+    const map = mapInstanceRef.current;
+    if (!map || followedLat == null || followedLng == null || isNaN(followedLat) || isNaN(followedLng)) return;
+    map.panTo([followedLat, followedLng], { animate: true });
+  }, [isFollowing, followedLat, followedLng]);
+
+  // Auto-fit ao trocar de filtro (categoria/tenant/unidade/status) — seções
+  // 2/3/6/26. Keyed por visibleAssetIdsKey (o CONJUNTO de IDs com posição
+  // válida), não por displayAssets inteiro: um ativo já visível mudando só de
+  // lat/lng NÃO deve reenquadrar a câmera (seção 11 — "câmera não deve ficar
+  // pulando"). Não reenquadra se o usuário selecionou um ativo QUE ESTÁ NO
+  // CONJUNTO ATUAL ou está em modo "seguir" — a câmera fica sob controle dele
+  // nesse caso.
+  //
+  // `selectedAssetId` já é filtrado por pertencimento a `sourceAssets` desta
+  // instância (ver definição acima) — uma seleção de OUTRA página não conta
+  // mais como "seleção ativa aqui".
+  const lastAutoFitKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    if (visibleAssetIdsKey === lastAutoFitKeyRef.current) return;
+    lastAutoFitKeyRef.current = visibleAssetIdsKey;
+    if (!visibleAssetIdsKey) return; // conjunto vazio: UI de estado vazio cuida disso
+    if (isFollowing || selectedAssetId) return;
+    fitToVisibleAssets();
+  }, [visibleAssetIdsKey, isFollowing, selectedAssetId, fitToVisibleAssets]);
 
   // Handle replay frame update on map
   const handleReplayFrameChange = (point: RoutePoint) => {
@@ -1170,7 +1349,17 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     }
   };
 
-  const currentActiveAsset = activeDrawerAsset || selectedAssetOverride || selectedAsset;
+  const currentActiveAsset = liveSelectedAsset;
+  // drawerAsset: dado ao vivo do ativo aberto no painel — cai pro snapshot só
+  // se o ativo tiver saído da lista atual (ex.: filtro mudou) entre o clique e
+  // agora, pra não quebrar o painel já aberto.
+  const drawerAsset = currentActiveAsset ?? activeDrawerAsset;
+  const drawerHasRealPosition =
+    !!drawerAsset &&
+    drawerAsset.telemetry.latitude != null &&
+    drawerAsset.telemetry.longitude != null &&
+    !isNaN(drawerAsset.telemetry.latitude) &&
+    !isNaN(drawerAsset.telemetry.longitude);
 
   return (
     <div
@@ -1219,7 +1408,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                 <Filter className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <select
                   value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value as AssetCategory | 'all')}
+                  onChange={(e) => focusAssetType(e.target.value as AssetCategory | 'all')}
                   className="bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs rounded-xl pl-7 pr-2.5 py-1.5 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
                 >
                   <option value="all">Todas Categorias</option>
@@ -1544,6 +1733,22 @@ export const AssetMap: React.FC<AssetMapProps> = ({
               )}
             </div>
 
+            {/* Fit to Visible Assets (seção 26) — reenquadra manualmente sem
+                esperar o próximo filtro mudar; some se não há nada pra
+                enquadrar. */}
+            {assetsWithValidPosition.length > 0 && (
+              <button
+                onClick={() => {
+                  setIsFollowing(false);
+                  fitToVisibleAssets();
+                }}
+                className="p-2 rounded-xl transition-colors border bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white"
+                title="Enquadrar todos os ativos visíveis"
+              >
+                <Scan className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Follow Asset Toggle */}
             <button
               onClick={() => setIsFollowing(!isFollowing)}
@@ -1661,6 +1866,28 @@ export const AssetMap: React.FC<AssetMapProps> = ({
 
       {/* Leaflet DOM Canvas Container */}
       <div ref={mapContainerRef} className="w-full h-full z-0 bg-slate-950" />
+
+      {/* Estado vazio (seção 23) — o filtro atual (categoria/tenant/unidade/
+          status) bateu em zero ativos com posição real. Nunca deixar o mapa
+          "perdido" numa tela em branco sem explicação, e nunca inventar
+          coordenada só pra mostrar algo. */}
+      {assetsWithValidPosition.length === 0 && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-slate-900/95 border border-slate-700 rounded-2xl px-6 py-4 text-center shadow-2xl max-w-sm">
+            <MapPin className="w-6 h-6 text-slate-500 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-200">
+              {displayAssets.length === 0
+                ? 'Nenhum ativo encontrado para este filtro.'
+                : 'Nenhum ativo com localização disponível neste filtro.'}
+            </p>
+            {displayAssets.length > 0 && (
+              <p className="text-xs text-slate-400 mt-1">
+                {displayAssets.length} ativo(s) no filtro, nenhum ainda recebeu posição real do fornecedor.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Bottom Floating Stats Bar & Map Legend Overlay */}
       <div className="absolute bottom-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
@@ -1811,21 +2038,21 @@ export const AssetMap: React.FC<AssetMapProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono uppercase font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                  {activeDrawerAsset.category.toUpperCase()} • {activeDrawerAsset.code}
+                  {drawerAsset.category.toUpperCase()} • {drawerAsset.code}
                 </span>
                 <span
                   className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded border"
                   style={{
-                    color: getStatusBadgeInfo(activeDrawerAsset.status).color,
-                    borderColor: `${getStatusBadgeInfo(activeDrawerAsset.status).color}40`,
-                    backgroundColor: getStatusBadgeInfo(activeDrawerAsset.status).badgeBg,
+                    color: getStatusBadgeInfo(drawerAsset.status).color,
+                    borderColor: `${getStatusBadgeInfo(drawerAsset.status).color}40`,
+                    backgroundColor: getStatusBadgeInfo(drawerAsset.status).badgeBg,
                   }}
                 >
-                  {getStatusBadgeInfo(activeDrawerAsset.status).label}
+                  {getStatusBadgeInfo(drawerAsset.status).label}
                 </span>
               </div>
               <h3 className="text-base font-bold text-white mt-1.5 leading-snug">
-                {activeDrawerAsset.name}
+                {drawerAsset.name}
               </h3>
             </div>
             <button
@@ -1845,8 +2072,8 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <span>Velocidade</span>
                 </div>
                 <div className="text-lg font-bold text-white font-mono mt-1">
-                  {activeDrawerAsset.telemetry.speed !== undefined
-                    ? activeDrawerAsset.telemetry.speed
+                  {drawerAsset.telemetry.speed !== undefined
+                    ? drawerAsset.telemetry.speed
                     : 'N/A'}{' '}
                   <span className="text-xs font-normal text-slate-400">km/h</span>
                 </div>
@@ -1858,10 +2085,10 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <span>Bateria</span>
                 </div>
                 <div className="text-lg font-bold text-emerald-400 font-mono mt-1">
-                  {activeDrawerAsset.provider && activeDrawerAsset.telemetry.batteryLevelCategory
-                    ? BATTERY_LABEL[activeDrawerAsset.telemetry.batteryLevelCategory]
-                    : activeDrawerAsset.telemetry.batteryLevel !== undefined
-                    ? `${activeDrawerAsset.telemetry.batteryLevel}%`
+                  {drawerAsset.provider && drawerAsset.telemetry.batteryLevelCategory
+                    ? BATTERY_LABEL[drawerAsset.telemetry.batteryLevelCategory]
+                    : drawerAsset.telemetry.batteryLevel !== undefined
+                    ? `${drawerAsset.telemetry.batteryLevel}%`
                     : 'N/A'}
                 </div>
               </div>
@@ -1874,7 +2101,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Radio className="w-3.5 h-3.5 text-cyan-400" /> IMEI / Protocolo
                 </span>
                 <span className="font-mono text-slate-200">
-                  {activeDrawerAsset.imei} ({activeDrawerAsset.protocol})
+                  {drawerAsset.imei} ({drawerAsset.protocol})
                 </span>
               </div>
 
@@ -1882,7 +2109,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <Building className="w-3.5 h-3.5 text-indigo-400" /> Unidade Vinculada
                 </span>
-                <span className="text-slate-200 font-medium">{activeDrawerAsset.unitName}</span>
+                <span className="text-slate-200 font-medium">{drawerAsset.unitName}</span>
               </div>
 
               <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">
@@ -1890,13 +2117,13 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Wifi className="w-3.5 h-3.5 text-amber-400" /> Sinal Telemetria
                 </span>
                 <span className="font-mono text-emerald-400 font-semibold">
-                  {activeDrawerAsset.provider && !activeDrawerAsset.telemetry.signalStrength
+                  {drawerAsset.provider && !drawerAsset.telemetry.signalStrength
                     ? // Provider real (BRGPS/BRGPS_2) nunca informa % de sinal nem
                       // rede — "(4G LTE)" fixo era fabricado (o protocolo real do
                       // asset pode ser BLE Gateway, não celular). Achado ao vivo
                       // em 2026-09-10.
                       'Não informado pelo fornecedor'
-                    : `${activeDrawerAsset.telemetry.signalStrength}% (4G LTE)`}
+                    : `${drawerAsset.telemetry.signalStrength}% (4G LTE)`}
                 </span>
               </div>
 
@@ -1905,29 +2132,29 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Clock className="w-3.5 h-3.5 text-slate-400" /> Última Comunicação
                 </span>
                 <span className="font-mono text-slate-300">
-                  {activeDrawerAsset.provider
-                    ? formatRelativeTimePtBr(activeDrawerAsset.telemetry.lastCommunication)
-                    : activeDrawerAsset.telemetry.lastCommunication}
+                  {drawerAsset.provider
+                    ? formatRelativeTimePtBr(drawerAsset.telemetry.lastCommunication)
+                    : drawerAsset.telemetry.lastCommunication}
                 </span>
               </div>
 
-              {activeDrawerAsset.provider && (
+              {drawerAsset.provider && (
                 <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">
                   <span className="text-slate-400 flex items-center gap-1.5">
                     <Satellite className="w-3.5 h-3.5 text-cyan-400" /> Origem da Posição
                   </span>
                   <span className="font-mono text-cyan-300 font-semibold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                    API {activeDrawerAsset.provider}
+                    API {drawerAsset.provider}
                   </span>
                 </div>
               )}
 
-              {activeDrawerAsset.provider && isTechnicalUser && activeDrawerAsset.mac && (
+              {drawerAsset.provider && isTechnicalUser && drawerAsset.mac && (
                 <div className="flex justify-between items-center pb-2 border-b border-slate-800/80">
                   <span className="text-slate-400 flex items-center gap-1.5">
                     <Radio className="w-3.5 h-3.5 text-slate-400" /> MAC (técnico)
                   </span>
-                  <span className="font-mono text-slate-400 text-[11px]">{activeDrawerAsset.mac}</span>
+                  <span className="font-mono text-slate-400 text-[11px]">{drawerAsset.mac}</span>
                 </div>
               )}
 
@@ -1937,11 +2164,11 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   <Locate className="w-3.5 h-3.5 text-cyan-400" /> Fonte de Posição
                 </span>
                 <span className="font-mono text-cyan-300 font-semibold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                  {activeDrawerAsset.telemetry.positionSource || 'GPS Satellite'}
+                  {drawerAsset.telemetry.positionSource || 'GPS Satellite'}
                   {/* "|| 8m" fabricava uma precisão que o fornecedor não
                       informou (BRGPS não retorna accuracy) — omitir em vez de
                       inventar (achado ao vivo em 2026-09-10). */}
-                  {activeDrawerAsset.telemetry.gpsAccuracy ? ` (±${activeDrawerAsset.telemetry.gpsAccuracy}m)` : ''}
+                  {drawerAsset.telemetry.gpsAccuracy ? ` (±${drawerAsset.telemetry.gpsAccuracy}m)` : ''}
                 </span>
               </div>
 
@@ -1949,37 +2176,45 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-rose-400" /> Coordenadas Lat/Long
                 </span>
-                <span className="font-mono text-slate-400 text-[11px]">
-                  {activeDrawerAsset.telemetry.latitude.toFixed(4)},{' '}
-                  {activeDrawerAsset.telemetry.longitude.toFixed(4)}
-                </span>
+                {drawerHasRealPosition ? (
+                  <span className="font-mono text-slate-400 text-[11px]">
+                    {drawerAsset.telemetry.latitude.toFixed(4)},{' '}
+                    {drawerAsset.telemetry.longitude.toFixed(4)}
+                  </span>
+                ) : (
+                  <span className="font-mono text-amber-400 text-[11px]">Sem localização real disponível</span>
+                )}
               </div>
             </div>
 
-            {/* Quick Actions Panel */}
+            {/* Quick Actions Panel — seção 1 do brief: nunca navegar/seguir pra
+                coordenada default quando o ativo ainda não tem posição real. */}
             <div className="space-y-2 pt-2">
               <button
                 onClick={() => {
+                  if (!drawerHasRealPosition) return;
                   setIsFollowing(true);
                   if (mapInstanceRef.current) {
                     mapInstanceRef.current.flyTo(
                       [
-                        activeDrawerAsset.telemetry.latitude,
-                        activeDrawerAsset.telemetry.longitude,
+                        drawerAsset.telemetry.latitude,
+                        drawerAsset.telemetry.longitude,
                       ],
                       16
                     );
                   }
                 }}
-                className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-cyan-600/20"
+                disabled={!drawerHasRealPosition}
+                className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-cyan-600/20"
               >
                 <Locate className="w-4 h-4" />
                 <span>Acompanhar em Tempo Real</span>
               </button>
 
               <button
-                onClick={() => startNavigation(activeDrawerAsset)}
-                className="w-full py-2.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-600/20"
+                onClick={() => drawerHasRealPosition && startNavigation(drawerAsset)}
+                disabled={!drawerHasRealPosition}
+                className="w-full py-2.5 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-600/20"
               >
                 <Navigation2 className="w-4 h-4" />
                 <span>Navegar até o Ativo</span>
