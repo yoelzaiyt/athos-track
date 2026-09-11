@@ -138,7 +138,12 @@ export interface TelemetryData {
   // cru de bateria (-1..3), não porcentagem real — ver BatteryLevelCategory.
   batteryRaw?: number;
   batteryLevelCategory?: BatteryLevelCategory;
-  providerPublishedAt?: string; // publishTime do fornecedor, distinto de packetTimestamp
+providerPublishedAt?: string; // publishTime do fornecedor, distinto de packetTimestamp
+  serverReceivedAt?: string; // T3: instante em que nosso servidor recebeu/recolheu a posi��o (direto: TCP data; vendor: sync tick)
+  // FASE 12: instante em que a UI aplicou o último update vindo do realtime
+  // (service carimba no merge do AssetContext). UI_REFRESH_LATENCY_MS =
+  // uiUpdatedAt - serverReceivedAt. Nunca fabricado em simulação.
+  uiUpdatedAt?: string;
 }
 
 export type TireStatus = 'normal' | 'low_pressure' | 'high_pressure' | 'fault';

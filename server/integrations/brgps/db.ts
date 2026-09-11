@@ -219,8 +219,9 @@ export class BrGpsRepository {
            telemetry_battery_raw = $3, telemetry_battery_level_category = $4,
            telemetry_last_communication = $5, telemetry_packet_timestamp = $6,
            telemetry_provider_published_at = $7, telemetry_position_source = 'GPS',
-           status = $8, mac = coalesce($9, mac), updated_at = now()
-         where id = $10
+           telemetry_server_received_at = $8,
+           status = $9, mac = coalesce($10, mac), updated_at = now()
+         where id = $11
            and (telemetry_packet_timestamp is null or telemetry_packet_timestamp < $6)
          returning id`,
         [
@@ -231,6 +232,7 @@ export class BrGpsRepository {
           position.receivedAt.toISOString(),
           position.occurredAt.toISOString(),
           position.providerPublishedAt.toISOString(),
+          position.receivedAt.toISOString(),
           nextStatus,
           position.mac ?? null,
           target.assetId,

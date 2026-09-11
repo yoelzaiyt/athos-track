@@ -1,22 +1,24 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Radio,
   Wifi,
   WifiOff,
   Navigation,
   PauseCircle,
-  ShieldAlert,
   BatteryLow,
   AlertTriangle,
-  ArrowUpRight,
   ChevronRight,
   Activity,
   Layers,
+  TimerReset,
 } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
+import { useDashboardStats } from '../hooks/useDashboardStats';
+import { STATUS_META, type DerivedStatusKey } from '../lib/deviceStatus';
+import { formatLatencyMs } from '../lib/latency';
 import {
   PieChart,
   Pie,
@@ -35,12 +37,41 @@ interface DashboardProps {
   onNavigate: (module: string) => void;
 }
 
+const STATUS_ORDER: DerivedStatusKey[] = ['moving', 'stopped', 'online', 'stale', 'offline', 'alert'];
+
+function hourLabel(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:00`;
+}
+
+function relativeLabel(tsMs: number | null): string {
+  if (!tsMs) return '—';
+  const s = Math.max(0, Math.round((Date.now() - tsMs) / 1000));
+  if (s < 5) return 'agora';
+  if (s < 60) return `${s}s atrás`;
+  const min = Math.round(s / 60);
+  if (min < 60) return `${min}min atrás`;
+  return `${Math.round(min / 60)}h atrás`;
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { selectedClientId, selectedUnitId, theme } = useAuth();
-  const { getStats, alerts } = useAssets();
+  const { lastUiRefreshLatencyMs } = useAssets();
   const [hoveredStatusIndex, setHoveredStatusIndex] = useState<number | null>(null);
 
-  const stats = getStats(selectedClientId, selectedUnitId);
+  const {
+    statusBundle,
+    statusCounts,
+    statusLoading,
+    statusError,
+    lastStatusUpdateAt,
+    eventsBuckets,
+    eventsLoading,
+    eventsError,
+    lastEventsUpdateAt,
+    realtimeStatus,
+  } = useDashboardStats({ clientId: selectedClientId, unitId: selectedUnitId });
+
   const gridStroke = theme === 'light' ? '#e2e8f0' : '#1e293b';
   const tooltipStyle = {
     backgroundColor: theme === 'light' ? 'rgba(255,255,255,0.98)' : 'rgba(15, 23, 42, 0.95)',
@@ -50,39 +81,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     color: theme === 'light' ? '#0f172a' : '#fff',
   };
 
-  // Chart Data: Online vs Offline
-  const statusChartData = [
-    { name: 'Online / Movimento', value: stats.online, color: '#10b981' },
-    { name: 'Parados', value: stats.stopped, color: '#3b82f6' },
-    { name: 'Offline', value: stats.offline, color: '#64748b' },
-    { name: 'Fora de Cerca', value: stats.outOfGeofence, color: '#f43f5e' },
-  ];
+  // ---- Status derivado (FASE 4/5/6): contagens 100% baseadas em
+  //      timestamps reais + velocidade/deslocamento + alertas não reconhecidos.
+  const totalScoped = useMemo(() => {
+    if (!statusCounts) return null;
+    return STATUS_ORDER.reduce((s, k) => s + statusCounts[k], 0);
+  }, [statusCounts]);
 
-  // Chart Data: Hourly Events Timeline — achado do FINAL-PRE-PRODUCTION-GATE.md
-  // (mock ativo em produção): antes era um array fixo hardcoded (mesmos 6
-  // números sempre, pra qualquer tenant, qualquer dia), rotulado como
-  // "registrados hoje" sem ter relação nenhuma com dado real. Agora deriva
-  // de `alerts` (já vem escopado por tenant do AssetContext — mesmo padrão
-  // usado em AlertsPage.tsx), nas últimas 6 horas de verdade. Sem fonte de
-  // "pings de telemetria" carregada neste componente (exigiria buscar
-  // asset_route_points, que só HistoryPage.tsx carrega hoje) — a série foi
-  // removida em vez de inventar um número; ver comentário do gráfico abaixo.
-  const now = new Date();
-  const eventsTimelineData = Array.from({ length: 6 }, (_, i) => {
-    const hourStart = new Date(now);
-    hourStart.setMinutes(0, 0, 0);
-    hourStart.setHours(now.getHours() - (5 - i));
-    const hourEnd = new Date(hourStart.getTime() + 60 * 60 * 1000);
-    const inBucket = alerts.filter((a) => {
-      const t = new Date(a.timestamp).getTime();
-      return t >= hourStart.getTime() && t < hourEnd.getTime();
-    });
-    return {
-      hora: `${String(hourStart.getHours()).padStart(2, '0')}:00`,
-      cercas: inBucket.filter((a) => a.type === 'geofence_entry' || a.type === 'geofence_exit').length,
-      alertas: inBucket.filter((a) => a.type !== 'geofence_entry' && a.type !== 'geofence_exit').length,
-    };
-  });
+  const statusChartData = useMemo(
+    () => STATUS_ORDER.map((k) => ({ name: STATUS_META[k].label, value: statusCounts?.[k] ?? 0, color: STATUS_META[k].color, key: k })),
+    [statusCounts]
+  );
+
+  const lowBatteryCount = useMemo(() => {
+    if (!statusBundle) return null;
+    return statusBundle.assets.filter(
+      (a) =>
+        a.status === 'low_battery' ||
+        a.batteryCategory === 'CRITICAL' ||
+        a.batteryCategory === 'LOW' ||
+        (a.batteryLevel ?? 100) < 20
+    ).length;
+  }, [statusBundle]);
+
+  const criticalAlertAssets = useMemo(() => {
+    if (!statusBundle) return null;
+    return statusBundle.assets.filter((a) => (a.unackedCritical ?? 0) > 0).length;
+  }, [statusBundle]);
+
+  const onlineNow = totalScoped == null ? null : (statusCounts!.online + statusCounts!.moving + statusCounts!.stopped);
+  const eventsEmpty = eventsBuckets.length > 0 && eventsBuckets.every((b) => b.telemetry === 0 && b.alerts === 0);
+
+  const realtimeMeta = {
+    CONNECTED: { label: 'Conectado', cls: 'bg-emerald-500', ping: true, text: 'text-emerald-600 dark:text-emerald-400' },
+    RECONNECTING: { label: 'Reconectando', cls: 'bg-amber-500', ping: true, text: 'text-amber-600 dark:text-amber-400' },
+    OFFLINE: { label: 'Offline', cls: 'bg-rose-500', ping: false, text: 'text-rose-600 dark:text-rose-400' },
+  } as const;
+  const rt = realtimeMeta[realtimeStatus];
 
   return (
     <div className="p-6 space-y-6 bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
@@ -95,20 +130,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
               <span>Dashboard Executivo de Telemetria</span>
-              <span className="px-2 py-0.5 text-[10px] font-mono bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 rounded font-semibold uppercase flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500" />
-                </span>
-                Ao Vivo
+              {/* FASE 13: badge de realtime com estado REAL da conexão (não é
+                  mais um decore fixo "Ao Vivo" — reflete Socket.IO/Supabase
+                  realtime). */}
+              <span className={`px-2 py-0.5 text-[10px] font-mono border rounded-lg font-semibold uppercase flex items-center gap-1.5 ${rt.text} ${
+                realtimeStatus === 'CONNECTED'
+                  ? 'bg-emerald-500/10 border-emerald-500/20'
+                  : realtimeStatus === 'RECONNECTING'
+                    ? 'bg-amber-500/10 border-amber-500/20'
+                    : 'bg-rose-500/10 border-rose-500/20'
+              }`}>
+                {rt.ping && (
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${rt.cls} opacity-75`} />
+                    <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${rt.cls}`} />
+                  </span>
+                )}
+                Realtime: {rt.label}
               </span>
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Visão consolidada do parque de ativos, saúde de telemetria e cercas virtuais.
+              Visão consolidada do parque de ativos, saúde de telemetria e cercas virtuais. Dados reais — mostra &quot;sem dados&quot; quando não há.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2">
+              <TimerReset className="w-3.5 h-3.5" />
+              <span>UI refresh: <strong>{formatLatencyMs(lastUiRefreshLatencyMs)}</strong></span>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span>Status: {relativeLabel(lastStatusUpdateAt)}</span>
+            </div>
             <button
               onClick={() => onNavigate('mapa')}
               className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-cyan-600/20 hover:shadow-xl hover:shadow-cyan-600/30 hover:-translate-y-0.5 flex items-center gap-2 transition-all"
@@ -120,70 +172,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* 8 Primary Metric KPI Cards */}
+      {/* 8 Primary Metric KPI Cards — todas com fonte real (status derivado + telemetria) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        <StatCard
-          title="Total Ativos"
-          value={stats.total}
-          icon={Radio}
-          variant="cyan"
-          onClick={() => onNavigate('dispositivos')}
-        />
-        <StatCard
-          title="Online"
-          value={stats.online}
-          icon={Wifi}
-          variant="emerald"
-          onClick={() => onNavigate('dispositivos')}
-        />
-        <StatCard
-          title="Offline"
-          value={stats.offline}
-          icon={WifiOff}
-          variant="slate"
-          onClick={() => onNavigate('dispositivos')}
-        />
-        <StatCard
-          title="Em Movimento"
-          value={stats.moving}
-          icon={Navigation}
-          variant="cyan"
-          onClick={() => onNavigate('mapa')}
-        />
-        <StatCard
-          title="Parados"
-          value={stats.stopped}
-          icon={PauseCircle}
-          variant="indigo"
-          onClick={() => onNavigate('mapa')}
-        />
-        <StatCard
-          title="Fora da Cerca"
-          value={stats.outOfGeofence}
-          icon={ShieldAlert}
-          variant="rose"
-          onClick={() => onNavigate('mapa')}
-        />
-        <StatCard
-          title="Bateria Baixa"
-          value={stats.lowBattery}
-          icon={BatteryLow}
-          variant="amber"
-          onClick={() => onNavigate('carrinhos')}
-        />
-        <StatCard
-          title="Alertas Críticos"
-          value={stats.criticalAlertsCount}
-          icon={AlertTriangle}
-          variant="rose"
-          onClick={() => onNavigate('alertas')}
-        />
+        <StatCard title="Total Ativos" value={totalScoped ?? '…'} icon={Radio} variant="cyan" onClick={() => onNavigate('dispositivos')} />
+        <StatCard title="Comunicando" value={onlineNow ?? '…'} icon={Wifi} variant="emerald" onClick={() => onNavigate('dispositivos')} />
+        <StatCard title="Em Movimento" value={statusCounts?.moving ?? '…'} icon={Navigation} variant="cyan" onClick={() => onNavigate('mapa')} />
+        <StatCard title="Parados" value={statusCounts?.stopped ?? '…'} icon={PauseCircle} variant="indigo" onClick={() => onNavigate('mapa')} />
+        <StatCard title="Posição Antiga" value={statusCounts?.stale ?? '…'} icon={TimerReset} variant="amber" onClick={() => onNavigate('dispositivos')} />
+        <StatCard title="Offline" value={statusCounts?.offline ?? '…'} icon={WifiOff} variant="slate" onClick={() => onNavigate('dispositivos')} />
+        <StatCard title="Bateria Baixa" value={lowBatteryCount ?? '…'} icon={BatteryLow} variant="amber" onClick={() => onNavigate('carrinhos')} />
+        <StatCard title="Alerta Crítico" value={criticalAlertAssets ?? '…'} icon={AlertTriangle} variant="rose" onClick={() => onNavigate('alertas')} />
       </div>
 
-      {/* Mapa Consolidado — largura total, ampliado para melhor visibilidade do operador.
-          "Alertas Recentes" foi incorporado à Central de Alertas e Notificações de
-          Segurança (AlertsPage), que já tem os mesmos dados com filtro, busca e
-          reconhecimento — sem necessidade de um preview duplicado aqui. */}
+      {/* Mapa Consolidado */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 flex items-center gap-2">
@@ -205,7 +206,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
       {/* Bottom Grid: Events Chart & Device Status Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Events Bar Chart */}
+        {/* Events/Telcometry Bar Chart */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -214,83 +215,123 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <span>Volume de Eventos por Hora</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Cercas cruzadas e alertas registrados nas últimas 6 horas
+                Telemetria real (leituras dos dispositivos) e alertas nas últimas 6 horas — polling da API não é contado
               </p>
             </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={eventsTimelineData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-                <XAxis dataKey="hora" stroke="#94a3b8" fontSize={11} />
-                <YAxis
-                  stroke="#94a3b8"
-                  fontSize={11}
-                  allowDecimals={false}
-                  label={{ value: 'Cercas / Alertas', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="cercas" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Cercas Cruzadas" />
-                <Bar dataKey="alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
-              </ComposedChart>
-            </ResponsiveContainer>
+          {eventsLoading ? (
+            <div className="h-64 flex items-center justify-center text-xs text-slate-400">Carregando dados reais…</div>
+          ) : eventsError ? (
+            <div className="h-64 flex items-center justify-center text-xs text-rose-500">Falha ao buscar: {eventsError}</div>
+          ) : eventsEmpty ? (
+            <div className="h-64 flex flex-col items-center justify-center gap-1 text-center px-6">
+              <Activity className="w-8 h-8 text-slate-300 dark:text-slate-600" />
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Sem dados nas últimas 6 horas</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Nenhuma telemetria ou alerta real registrado no período (fonte: asset_route_points + system_alerts).
+              </p>
+            </div>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={eventsBuckets.map((b) => ({ hora: hourLabel(b.hour), Telemetria: b.telemetry, Alertas: b.alerts }))} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                  <XAxis dataKey="hora" stroke="#94a3b8" fontSize={11} />
+                  <YAxis
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    allowDecimals={false}
+                    label={{ value: 'Telemetria / Alertas', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
+                  />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  <Bar dataKey="Telemetria" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Telemetria" />
+                  <Bar dataKey="Alertas" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Alertas" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <div className="mt-2 text-[11px] font-mono text-slate-400 dark:text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+            <span>Refresca a cada 60s • último: {relativeLabel(lastEventsUpdateAt)}</span>
+            {statusError && <span className="text-rose-500">status basis: {statusError}</span>}
           </div>
         </div>
 
-        {/* Donut Chart: Device Status */}
+        {/* Donut Chart: Distributed Device Status (derivado) */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200 mb-1">
               Distribuição de Status de Ativos
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Proporção operacional em tempo real</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Derivado de timestamps reais + deslocamento + alertas (janelas configuráveis)
+            </p>
           </div>
 
           <div className="relative h-56 my-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusChartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={82}
-                  paddingAngle={4}
-                  dataKey="value"
-                  onMouseEnter={(_, index) => setHoveredStatusIndex(index)}
-                  onMouseLeave={() => setHoveredStatusIndex(null)}
-                  onClick={() => onNavigate('mapa')}
-                >
-                  {statusChartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.color}
-                      opacity={hoveredStatusIndex === null || hoveredStatusIndex === index ? 1 : 0.35}
-                      style={{ cursor: 'pointer', transition: 'opacity 0.2s ease' }}
-                      stroke="none"
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value: number, name: string) => [
-                    `${value} (${stats.total > 0 ? Math.round((value / stats.total) * 100) : 0}%)`,
-                    name,
-                  ]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {statusLoading ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">Carregando status real…</div>
+            ) : totalScoped === null ? (
+              <div className="h-full flex flex-col items-center justify-center gap-1 text-center px-6">
+                <span className="text-xs font-semibold text-rose-500">Sem dados suficientes</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Status não carregado ainda. Se nenhum ativo real responder, nada é exibido como se estivesse online.
+                </span>
+              </div>
+            ) : totalScoped === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center gap-1 text-center px-6">
+                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Nenhum ativo neste escopo</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Fonte real: /stats/status-basis (timestamps, velocidade/deslocamento, alertas não reconhecidos).
+                </span>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={82}
+                    paddingAngle={4}
+                    dataKey="value"
+                    onMouseEnter={(_, index) => setHoveredStatusIndex(index)}
+                    onMouseLeave={() => setHoveredStatusIndex(null)}
+                    onClick={() => onNavigate('mapa')}
+                  >
+                    {statusChartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.color}
+                        opacity={hoveredStatusIndex === null || hoveredStatusIndex === index ? 1 : 0.35}
+                        style={{ cursor: 'pointer', transition: 'opacity 0.2s ease' }}
+                        stroke="none"
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value: number, name: string) => [
+                      `${value} (${totalScoped > 0 ? Math.round((value / totalScoped) * 100) : 0}%)`,
+                      name,
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
 
-            {/* Center readout: total ativos, ou detalhe do status em hover */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums">
-                {hoveredStatusIndex !== null ? statusChartData[hoveredStatusIndex].value : stats.total}
-              </span>
-              <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 tracking-wide text-center px-4">
-                {hoveredStatusIndex !== null ? statusChartData[hoveredStatusIndex].name : 'Ativos Totais'}
-              </span>
-            </div>
+            {/* Center readout */}
+            {totalScoped !== null && !statusLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums">
+                  {hoveredStatusIndex !== null ? statusChartData[hoveredStatusIndex].value : totalScoped}
+                </span>
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 tracking-wide text-center px-4">
+                  {hoveredStatusIndex !== null ? statusChartData[hoveredStatusIndex].name : 'Ativos Totais'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-1 text-xs pt-2 border-t border-slate-200 dark:border-slate-800">
@@ -307,6 +348,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <strong className="text-slate-900 dark:text-slate-200 font-mono">{st.value}</strong>
               </button>
             ))}
+            <span className="col-span-2 text-[11px] font-mono text-slate-400 dark:text-slate-500 pt-1">
+              Base: {relativeLabel(lastStatusUpdateAt)} • {statusError ? <span className="text-rose-500">{statusError}</span> : 'dados reais'}
+            </span>
           </div>
         </div>
       </div>
