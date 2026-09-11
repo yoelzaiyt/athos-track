@@ -91,8 +91,11 @@ class AthosMapProvider implements MapProviderAbstraction {
         name: 'Satélite Híbrido com Ruas',
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attribution: '&copy; Esri &copy; OpenStreetMap',
-        overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
-        overlayAttribution: '&copy; CARTO &copy; OpenStreetMap',
+        // Mesmo motivo do 2D acima: sem API key a CARTO devolve o tile com a marca
+        // "API KEY REQUIRED" estampada, então os rótulos vêm do Esri Reference
+        // (mesmo provider do satélite desta camada, sem chave).
+        overlayUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        overlayAttribution: '&copy; Esri &copy; OpenStreetMap',
         maxZoom: 19,
       };
     }
