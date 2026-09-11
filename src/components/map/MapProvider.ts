@@ -27,6 +27,8 @@ export interface TileProviderConfig {
   overlayUrl?: string; // For Hybrid mode road/label overlay
   overlayAttribution?: string;
   maxZoom: number;
+  /** Último zoom que o provedor realmente serve — acima dele o Leaflet amplia o tile. */
+  maxNativeZoom?: number;
 }
 
 export interface MapProviderAbstraction {
@@ -39,22 +41,27 @@ class AthosMapProvider implements MapProviderAbstraction {
   private STORAGE_KEY = 'athos_map_preferences_v1';
 
   public getTileConfig(mode: MapViewMode, themeMode: ThemeMode = 'dark'): TileProviderConfig {
+    // Os basemaps da CARTO passaram a exigir chave de API e voltam com a marca
+    // "API KEY REQUIRED" estampada no tile, então o 2D (e o noturno, e os rótulos
+    // do híbrido) usa o Esri Canvas — mesmo provedor já usado no satélite.
     if (mode === '2D') {
       if (themeMode === 'light') {
         return {
           id: '2D',
           name: 'Vetor 2D Operacional (Claro)',
-          url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+          attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
           maxZoom: 19,
+          maxNativeZoom: 16,
         };
       }
       return {
         id: '2D',
         name: 'Vetor 2D Operacional (Escuro)',
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
         maxZoom: 19,
+        maxNativeZoom: 16,
       };
     }
 
@@ -74,8 +81,8 @@ class AthosMapProvider implements MapProviderAbstraction {
         name: 'Satélite Híbrido com Ruas',
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attribution: '&copy; Esri &copy; OpenStreetMap',
-        overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
-        overlayAttribution: '&copy; CARTO &copy; OpenStreetMap',
+        overlayUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        overlayAttribution: '&copy; Esri &copy; OpenStreetMap',
         maxZoom: 19,
       };
     }
@@ -104,9 +111,10 @@ class AthosMapProvider implements MapProviderAbstraction {
       return {
         id: 'NIGHT',
         name: 'Modo Noturno Manual',
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
         maxZoom: 19,
+        maxNativeZoom: 16,
       };
     }
 
