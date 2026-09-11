@@ -50,6 +50,7 @@ import {
   Ruler,
   AlertTriangle,
   Scan,
+  Maximize,
 } from 'lucide-react';
 import {
   AssetDevice,
@@ -70,6 +71,7 @@ import {
   getCategoryThemeColor,
   getStatusBadgeInfo,
 } from './AssetIcons';
+import { computeInitialFit, computeAllBounds } from './mapV2GeoJson';
 import { AssetIcon, ASSET_CATEGORY_META } from '../common/AssetIconRegistry';
 import { ReplayController } from './ReplayController';
 import { NavigationPanel } from './NavigationPanel';
@@ -413,23 +415,52 @@ export const AssetMap: React.FC<AssetMapProps> = ({
   // cart)" hardcoded. Funciona hoje pra qualquer AssetCategory existente
   // (cart/box/vehicle/forklift/...) e pra qualquer categoria futura sem
   // mudança de código aqui.
+  //
+  // RESISTENTE A OUTLIERS (seção 7): o enquadramento usa o NÚCLEO central dos
+  // pontos (computeInitialFit) — um ativo MUITO distante do resto não estoura
+  // o enquadramento dos que estão operando juntos. O outlier NUNCA é apagado do
+  // mapa nem da lista; ele só não participa do "fit". Pra vê-lo junto com o
+  // resto, existe o "Ver todos os ativos" (fitToAllVisibleAssets).
   const fitToVisibleAssets = useCallback(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
     if (assetsWithValidPosition.length === 0) return;
-    if (assetsWithValidPosition.length === 1) {
-      // Seção 27: um único ativo não usa fitBounds (zoom exagerado) — centraliza
-      // direto com um zoom fixo confortável.
-      const a = assetsWithValidPosition[0];
-      map.flyTo([a.telemetry.latitude, a.telemetry.longitude], 16, { duration: 1.0 });
+    const fit = computeInitialFit(assetsWithValidPosition);
+    if (fit.kind === 'center') {
+      const a = fit;
+      map.flyTo([a.lat, a.lng], a.zoom, { duration: 1.0 });
       return;
     }
-    const bounds = L.latLngBounds(
-      assetsWithValidPosition.map((a) => [a.telemetry.latitude, a.telemetry.longitude] as [number, number])
+    if (fit.kind === 'bounds') {
+      const b = fit.bounds;
+      const bounds = L.latLngBounds([
+        [b.south, b.west],
+        [b.north, b.east],
+      ]);
+      // padding evita marcador colado na borda; maxZoom evita zoom absurdo quando
+      // os pontos estão muito próximos (ex.: 10 carrinhos agrupados).
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
+    }
+  }, [assetsWithValidPosition]);
+
+  // "Ver todos os ativos" — caminho explícito e separado do fit robusto:
+  // enquadra o conjunto COMPLETO, inclusive outliers, sem truncar nada.
+  const fitToAllVisibleAssets = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const bounds = computeAllBounds(assetsWithValidPosition);
+    if (!bounds) return;
+    if (assetsWithValidPosition.length === 1) {
+      map.flyTo([bounds.north, bounds.west], 16, { duration: 1.0 });
+      return;
+    }
+    map.fitBounds(
+      L.latLngBounds([
+        [bounds.south, bounds.west],
+        [bounds.north, bounds.east],
+      ]),
+      { padding: [60, 60], maxZoom: 17 }
     );
-    // padding evita marcador colado na borda; maxZoom evita zoom absurdo quando
-    // os pontos estão muito próximos (ex.: 10 carrinhos agrupados).
-    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
   }, [assetsWithValidPosition]);
 
   const focusAssetType = useCallback(
@@ -1863,9 +1894,24 @@ export const AssetMap: React.FC<AssetMapProps> = ({
                   fitToVisibleAssets();
                 }}
                 className="p-2 rounded-xl transition-colors border bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white"
-                title="Enquadrar todos os ativos visíveis"
+                title="Enquadrar região principal (ignora outliers)"
               >
                 <Scan className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Ver todos os ativos (inclusive outliers) — caminho explícito da
+                seção "Ver todos", separado do fit robusto do núcleo. */}
+            {assetsWithValidPosition.length > 1 && (
+              <button
+                onClick={() => {
+                  setIsFollowing(false);
+                  fitToAllVisibleAssets();
+                }}
+                className="p-2 rounded-xl transition-colors border bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white"
+                title="Ver todos os ativos (inclui outliers)"
+              >
+                <Maximize className="w-4 h-4" />
               </button>
             )}
 

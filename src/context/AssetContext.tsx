@@ -26,6 +26,7 @@ import {
   UserProfile,
 } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { uiRefreshLatencyMs } from '../lib/latency';
 import {
   rowToAsset, assetToInsertRow, assetUpdatesToRow,
   rowToGeofence, geofenceToInsertRow, geofenceUpdatesToRow,
@@ -77,6 +78,9 @@ interface AssetContextType {
   statusFilter: AssetStatus | 'all';
   isLiveSimulationActive: boolean;
   activeTabModule: string;
+  /** FASE 12: última latência medida BACKEND_RECEIVED_AT -> UI_UPDATED_AT (ms),
+   *  em assets reais que chegaram via realtime (null se ainda nada medido). */
+  lastUiRefreshLatencyMs: number | null;
   setSelectedAsset: (asset: AssetDevice | null) => void;
   setSearchQuery: (query: string) => void;
   setCategoryFilter: (cat: AssetCategory | 'all') => void;
@@ -173,7 +177,8 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<AssetStatus | 'all'>('all');
   const [activeTabModule, setActiveTabModule] = useState<string>('dashboard');
-  const [isLiveSimulationActive, setIsLiveSimulationActive] = useState<boolean>(true);
+  const [isLiveSimulationActive, setIsLiveSimulationActive] = useState<boolean>(false);
+  const [lastUiRefreshLatencyMs, setLastUiRefreshLatencyMs] = useState<number | null>(null);
 
   // Carga inicial: busca todas as coleções do Supabase em paralelo.
   useEffect(() => {
@@ -273,11 +278,35 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .channel('athos-assets-realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
         const updated = rowToAsset(payload.new as Record<string, unknown>);
-        setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        // FASE 12: registra o instante exato do merge na UI e mede
+        // UI_REFRESH_LATENCY_MS = UI_UPDATED_AT - BACKEND_RECEIVED_AT.
+        // uiUpdatedAt é carimbado na hora da aplicação (não do backend), então
+        // o número é honesto: só entra quando serverReceivedAt é ISO real.
+        const uiUpdatedAt = new Date().toISOString();
+        const latency = uiRefreshLatencyMs(
+          updated.telemetry?.serverReceivedAt as string | undefined,
+          uiUpdatedAt,
+          Date.now()
+        );
+        if (latency != null) setLastUiRefreshLatencyMs(latency);
+        setAssets((prev) =>
+          prev.map((a) =>
+            a.id === updated.id
+              ? { ...updated, telemetry: { ...updated.telemetry, uiUpdatedAt } }
+              : a
+          )
+        );
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'system_alerts' }, (payload) => {
         const inserted = rowToAlert(payload.new as Record<string, unknown>);
         setAlerts((prev) => [inserted, ...prev]);
+      })
+      // FASE 3: reconhecimento de alerta feito por OUTRO usuário também
+      // propaga sem F5 (UPDATE em system_alerts; notificado pelo trigger
+      // server/db/02_realtime_notify.sql).
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_alerts' }, (payload) => {
+        const updatedAlert = rowToAlert(payload.new as Record<string, unknown>);
+        setAlerts((prev) => prev.map((alt) => (alt.id === updatedAlert.id ? updatedAlert : alt)));
       })
       .subscribe();
 
@@ -289,6 +318,9 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Simulação de movimento a cada 4s: só client-side, sobre o estado já carregado
   // do Supabase — não grava de volta no banco (evita milhares de writes por uma
   // demo visual; um rastreador real enviaria telemetria real via um pipeline próprio).
+  // FASE de refino operacional: DESLIGADA por padrão (isLiveSimulationActive=false)
+  // — regra "SE APARECE NA TELA, TEM QUE SER REAL". O toggle ainda existe no app
+  // pra uma eventual demo, mas o painel padrão não fabrica posição/"Agora".
   useEffect(() => {
     if (!isLiveSimulationActive) return;
 
@@ -893,6 +925,15 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     });
 
+    // FASE 11 (tenant isolation): criticalAlertsCount NUNCA cruzava tenant —
+    // contava alertas de TODOS os clientes mesmo com clientId/unitId filtrados
+    // (o array `alerts` é global). Agora, quando há filtro, o contador é
+    // restrito aos alertas dos assets do escopo. system_alerts não carrega
+    // client_id — a ligação é via asset_id do alerta -> assets escopados.
+    const scopedAlertIds = new Set(scoped.map((a) => a.id));
+    const visibleAlerts =
+      clientId === 'all' && unitId === 'all' ? alerts : alerts.filter((a) => scopedAlertIds.has(a.assetId));
+
     const total = scoped.length;
     const online = scoped.filter((a) => a.status !== 'offline').length;
     const offline = scoped.filter((a) => a.status === 'offline').length;
@@ -913,7 +954,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         a.telemetry.batteryLevelCategory === 'LOW' ||
         (a.telemetry.batteryLevel ?? 100) < 20
     ).length;
-    const criticalAlertsCount = alerts.filter((a) => !a.acknowledged && a.severity === 'critical').length;
+    const criticalAlertsCount = visibleAlerts.filter((a) => !a.acknowledged && a.severity === 'critical').length;
 
     return {
       total,
@@ -963,6 +1004,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setStatusFilter,
         setActiveTabModule,
         toggleLiveSimulation,
+        lastUiRefreshLatencyMs,
         acknowledgeAlert,
         addGeofence,
         updateGeofence,

@@ -10,6 +10,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { authRouter } from './routes-auth';
 import { restRouter } from './rest';
 import { providersRouter } from './routes-providers';
+import { statsRouter } from './routes-stats';
 import { startRealtimeBridge } from './realtime';
 import { pool, closeDbPools } from './db';
 import { ProviderRegistry } from '../integrations/shared/ProviderRegistry';
@@ -77,6 +78,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ok: true }));
 app.use('/auth', authRouter);
 app.use('/rest', restRouter);
 app.use('/providers', providersRouter);
+app.use('/stats', statsRouter);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: CORS_ORIGIN } });

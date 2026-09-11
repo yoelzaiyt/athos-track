@@ -35,12 +35,47 @@ let authToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
 let currentUser: AuthUser | null = null;
 const authListeners: AuthListener[] = [];
 
+// SEC-003: o servidor agora exige um JWT válido no handshake (ver
+// server/api/realtime.ts) — sem isso a conexão é recusada.
 let socket: Socket | null = null;
+
+// FASE 13: estado REALTIME_CONNECTED/RECONNECTING/OFFLINE exposto pro
+// frontend, baseado nos eventos reais do Socket.IO (sem arrastar dragão
+// domínio pra dentro do shim — o shim só emite o estado legível).
+export type RealtimeConnectionStatus = 'CONNECTED' | 'RECONNECTING' | 'OFFLINE';
+type RealtimeStatusListener = (status: RealtimeConnectionStatus) => void;
+const realtimeStatusListeners = new Set<RealtimeStatusListener>();
+let realtimeStatus: RealtimeConnectionStatus = 'OFFLINE';
+
+function setRealtimeStatus(next: RealtimeConnectionStatus) {
+  if (realtimeStatus === next) return;
+  realtimeStatus = next;
+  for (const l of realtimeStatusListeners) l(next);
+}
+
 function getSocket(): Socket {
-  // SEC-003: o servidor agora exige um JWT válido no handshake (ver
-  // server/api/realtime.ts) — sem isso a conexão é recusada.
-  if (!socket) socket = io(API_URL, { transports: ['websocket'], auth: { token: authToken } });
+  if (!socket) {
+    socket = io(API_URL, { transports: ['websocket'], auth: { token: authToken } });
+    socket.on('connect', () => setRealtimeStatus('CONNECTED'));
+    socket.on('disconnect', () => setRealtimeStatus('OFFLINE'));
+    socket.on('connect_error', () => setRealtimeStatus('RECONNECTING'));
+    socket.io.on('reconnect_attempt', () => setRealtimeStatus('RECONNECTING'));
+    socket.io.on('reconnect', () => setRealtimeStatus('CONNECTED'));
+  }
   return socket;
+}
+
+/** FASE 13: inscreve um listener no estado de conexão realtime.
+ *  Chama o listener imediatamente com o estado atual (status assimétrico).
+ *  Retorna unsubscribe. */
+export function subscribeRealtimeStatus(cb: RealtimeStatusListener): () => void {
+  realtimeStatusListeners.add(cb);
+  cb(realtimeStatus);
+  return () => { realtimeStatusListeners.delete(cb); };
+}
+
+export function getRealtimeConnectionStatus(): RealtimeConnectionStatus {
+  return realtimeStatus;
 }
 
 function currentSession(): Session | null {

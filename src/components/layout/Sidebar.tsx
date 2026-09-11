@@ -27,6 +27,7 @@ import {
   Wrench,
   ShieldAlert,
   Radio,
+  Radar,
   Archive,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -77,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentModule, onSelectModule 
     { key: 'ordens_servico', label: 'Ordens de Serviço', icon: Wrench },
     { key: 'recuperacao_ativos', label: 'Recuperação de Ativos', icon: ShieldAlert },
     { key: 'homologacao_gt06', label: 'Homologação GT06', icon: Radio },
+    { key: 'diagnostico_latencia', label: 'Diagnóstico de Latência', icon: Radar },
     { key: 'permissoes', label: 'Grupos & Permissões', icon: ShieldCheck },
     { key: 'integracoes', label: 'Integrações & API', icon: Globe },
     { key: 'configuracoes', label: 'Configurações', icon: Settings },

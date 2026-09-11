@@ -100,6 +100,7 @@ const TELEMETRY_FIELDS: FieldMap = [
   ['idlingMinutesToday', 'telemetry_idling_minutes_today'],
   ['batteryRaw', 'telemetry_battery_raw'], ['batteryLevelCategory', 'telemetry_battery_level_category'],
   ['providerPublishedAt', 'telemetry_provider_published_at'],
+  ['serverReceivedAt', 'telemetry_server_received_at'],
 ];
 
 export function rowToAsset(row: Row): AssetDevice {
