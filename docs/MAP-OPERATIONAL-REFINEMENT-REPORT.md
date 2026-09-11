@@ -67,16 +67,16 @@ NO — Mantido como opcional. Justificativa: (1) stack atual keyless satisfaz se
 
 | Item | Phase | Status | Notes |
 |---|---|---|---|
-| Visual test BR (live browser with real tags) | FASE 17 | PENDING | Protocol: load with VITE_MAP_V2_ENABLED=true, 12+ tags, verify tiles load, icons visible, cluster expand, spiderfy, realtime no F5, zoom cap z19, follow asset |
+| Visual test BR (live browser with real tags) | FASE 17 | PARTIAL (automated smoke OK) | Protocol: load with VITE_MAP_V2_ENABLED=true, 12+ tags, verify tiles load, icons visible, cluster expand, spiderfy, realtime no F5, zoom cap z19, follow asset. Automated checks passed (build with V2 chunk, dev transform sem erro, CSP allow-list completa). Falta a confirmação visual em browser real. |
 | Visual test CN (live browser, CN network) | FASE 17 | PENDING | Protocol: verify OSM access (may be slow/blocked), satellite fallback, EN labels, zoom cap z19 |
 | MapTiler live tile test with API key | FASE 2 | PENDING | Evaluate vector tile quality, locale switching, CN CDN reliability |
 | `docs/OPERATIONAL-REFINEMENT-REPORT.md` (dashboard round FASE 17) | FASE 17 (dashboard) | PENDING | Separate report for dashboard operational refinement round |
-| BRGPS interval 15→10s + live measurement | FASE 2 (operational round) | PENDING | Change `BRGPS_SYNC_INTERVAL_SECONDS` to 10, measure before/after |
-| CSP testing (tile origins whitelisted) | FASE 19 | PENDING | Verify Content Security Policy allows OSM/Esri/CARTO origins |
+| BRGPS interval 15→10s + live measurement | FASE 2 (operational round) | **DONE** | `BRGPS_SYNC_INTERVAL_SECONDS` mudado pra 10 em `.env`, `.env.example` e default do código (`server/brgps-sync/index.ts`). Medição viva 2026-09-11 (conta BRGPS_2): `GET /tag status=200 duration=1026ms`, posição aplicada. Efeito: imprecisão do T3 (polling) cai de ≤15s pra ≤10s. Medição de loop contínuo full pipeline segue pendente (catálogo provider_devices parcial). |
+| CSP testing (tile origins whitelisted) | FASE 19 | **DONE** | CSP adicionado em `vercel.json` (SPA, header real testado via servidor estático) + headers de segurança na API (`server/api/index.ts`). Allow-list cobre `tile.openstreetmap.org`, `server.arcgisonline.com`, `basemaps.cartocdn.com`, `tile.opentopomap.org` (com e sem subdomínios `{s}`) em `img-src` e `connect-src`; `www.openstreetmap.org` é link de atribuição (navegação, não recurso). |
 | MapTiler CSS for MapLibre (83kB, already in V2 chunk) | FASE 18 | OK | Already included; no change needed |
 
 ## SECURITY
-All tile sources are HTTPS. No client-side secrets (grep verified). CSP testing pending. MapLibre worker excluded from Vite optimizeDeps (worker fix, already documented).
+All tile sources are HTTPS. No client-side secrets (grep verified). **CSP FASE 19 concluído**: `Content-Security-Policy` em `vercel.json` + security headers na API; allow-list de origens OSM/Esri/CARTO verificada (todas as origens de `MapProvider.ts` cobertas em `img-src`/`connect-src`). MapLibre worker excluded from Vite optimizeDeps (worker fix, already documented).
 
 ## PERFORMANCE
 V2 raster mode: ~1042 kB / 284 kB gzip (MapLibre chunk, lazy-loaded only when flag=true). Realtime via incremental `setData()` (no map recreation). Icon pre-rasterization on mount (warmupCatalog). Clustering via supercluster (clusterRadius 48, clusterMaxZoom 16, spiderfy ≤12 members). Tile error monitoring with throttled fallback (no spam).

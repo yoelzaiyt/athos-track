@@ -29,7 +29,7 @@ import { BrGpsService } from '../integrations/brgps/BrGpsService.ts';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: path.resolve(__dirname, '../../.env') });
 
-const BRGPS_SYNC_INTERVAL_SECONDS = Number(process.env.BRGPS_SYNC_INTERVAL_SECONDS ?? 15);
+const BRGPS_SYNC_INTERVAL_SECONDS = Number(process.env.BRGPS_SYNC_INTERVAL_SECONDS ?? 10);
 const DIRECT_URL = process.env.DIRECT_URL;
 
 // --account=2 seleciona a segunda conta BRGPS (env BRGPS2_*, achada em
