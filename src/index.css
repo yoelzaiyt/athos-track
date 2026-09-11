@@ -42,6 +42,15 @@
   background-color: rgb(34 211 238 / 0.6);
 }
 
+/* Basemap escuro sem provedor pago/autenticado (ver MapProvider.ts, modos 2D
+   escuro e NIGHT) — Stadia Maps retornava 401 real em produção sem API key
+   (MAP-401-ROOT-CAUSE.md). Em vez de trocar de provedor no escuro, reusamos o
+   mesmo tile OSM claro já provado funcionando e invertemos as cores via CSS —
+   técnica padrão pra simular um basemap escuro sem depender de chave/billing. */
+.athos-dark-basemap-filter {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
 /* ===================== Portal de Homologação GT06 (/homologacao) =====================
    Tema escuro/dourado escoposado a esta seção — não afeta a paleta cyan/amber
    do app interno autenticado. Tokens usados via var(--h-*) nos componentes de

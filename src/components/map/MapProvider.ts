@@ -27,6 +27,10 @@ export interface TileProviderConfig {
   overlayUrl?: string; // For Hybrid mode road/label overlay
   overlayAttribution?: string;
   maxZoom: number;
+  /** Classe CSS aplicada ao container do tile layer (ver AssetMap.tsx) — usada
+   *  para simular um basemap escuro em cima de tiles claros sem chave (ver
+   *  athos-dark-basemap-filter em src/index.css). */
+  tileClassName?: string;
 }
 
 export interface MapProviderAbstraction {
@@ -54,13 +58,20 @@ class AthosMapProvider implements MapProviderAbstraction {
           maxZoom: 19,
         };
       }
+      // 2D-escuro: usava tiles.stadiamaps.com/alidade_smooth_dark, que exige API
+      // key em produção (free tier só libera sem chave com Referer localhost) —
+      // confirmado ao vivo em produção: HTTP 401 "Invalid Authentication" em
+      // 100% dos tiles (ver MAP-401-ROOT-CAUSE.md). Corrigido usando o mesmo tile
+      // OSM claro (sem chave, já provado funcionando) + filtro CSS que inverte
+      // as cores pra simular um basemap escuro (.athos-dark-basemap-filter em
+      // src/index.css) — sem depender de provedor pago/autenticado.
       return {
         id: '2D',
         name: 'Vetor 2D Operacional (Escuro)',
-        url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-        attribution:
-          '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
+        tileClassName: 'athos-dark-basemap-filter',
       };
     }
 
@@ -107,17 +118,15 @@ class AthosMapProvider implements MapProviderAbstraction {
     }
 
     if (mode === 'NIGHT') {
-      // Mesma ressalva do 2D escuro: Stadia libera uso anônimo só com Referer localhost
-      // (dev). Em produção (domínio real), sem VITE_STADIA_API_KEY isso volta a quebrar
-      // como a CARTO quebrou — precisa de conta gratuita em stadiamaps.com e trocar a
-      // URL por .../alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=SUA_CHAVE.
+      // Mesmo fix do 2D escuro (ver acima): Stadia retornava 401 real em
+      // produção, confirmado ao vivo (MAP-401-ROOT-CAUSE.md). OSM + filtro CSS.
       return {
         id: 'NIGHT',
         name: 'Modo Noturno Manual',
-        url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-        attribution:
-          '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
+        tileClassName: 'athos-dark-basemap-filter',
       };
     }
 

@@ -537,6 +537,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
     const baseTile = L.tileLayer(tileConfig.url, {
       attribution: tileConfig.attribution,
       maxZoom: tileConfig.maxZoom,
+      className: tileConfig.tileClassName,
     }).addTo(map);
 
     baseTileLayerRef.current = baseTile;
