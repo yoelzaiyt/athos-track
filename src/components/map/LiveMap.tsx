@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { AssetMap, AssetMapProps } from './AssetMap';
+import { MapV2ErrorBoundary } from './MapV2ErrorBoundary';
 
 // MAP_V2_ENABLED (POC) — ver OPERATIONAL-MAP-ARCHITECTURE.md. Opt-in explícito:
 // ausente/"false" = V1 (Leaflet, produção). "true" = V2 (MapLibre, POC isolada).
@@ -13,16 +14,18 @@ export const LiveMap: React.FC<AssetMapProps> = (props) => {
     // A POC V2 ainda não cobre todas as props de edição do V1 (geofence
     // editável, floor plan, replay, rotas) — fora de escopo desta fase.
     return (
-      <Suspense fallback={<div className={props.heightClass ?? 'h-[calc(100vh-4rem)]'} />}>
-        <AssetMapV2
-          assetsList={props.assetsList}
-          geofencesList={props.geofencesList}
-          selectedAssetOverride={props.selectedAssetOverride}
-          onSelectAsset={props.onSelectAsset}
-          heightClass={props.heightClass}
-          enableFollowMode={props.enableFollowMode}
-        />
-      </Suspense>
+      <MapV2ErrorBoundary fallback={<AssetMap {...props} />}>
+        <Suspense fallback={<div className={props.heightClass ?? 'h-[calc(100vh-4rem)]'} />}>
+          <AssetMapV2
+            assetsList={props.assetsList}
+            geofencesList={props.geofencesList}
+            selectedAssetOverride={props.selectedAssetOverride}
+            onSelectAsset={props.onSelectAsset}
+            heightClass={props.heightClass}
+            enableFollowMode={props.enableFollowMode}
+          />
+        </Suspense>
+      </MapV2ErrorBoundary>
     );
   }
   return <AssetMap {...props} />;

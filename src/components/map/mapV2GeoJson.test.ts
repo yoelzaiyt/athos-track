@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { circlePolygon, geofenceToGeoJsonFeature, assetsToGeoJson } from './mapV2GeoJson';
+import {
+  circlePolygon,
+  geofenceToGeoJsonFeature,
+  assetsToGeoJson,
+  assetFeatureProps,
+  computeInitialFit,
+  computeAllBounds,
+  spiderfyOffsets,
+  buildSpiderfyGeoJson,
+  SPIDERFY_MAX_MEMBERS,
+} from './mapV2GeoJson';
 import { AssetDevice, Geofence } from '../../types';
 
 function makeAsset(overrides: Partial<AssetDevice> = {}): AssetDevice {
@@ -136,5 +146,154 @@ describe('AssetMapV2 — assetsToGeoJson (fonte realtime dos marcadores)', () =>
     const asset = makeAsset({ telemetry: { ...makeAsset().telemetry, latitude: -23.5, longitude: -46.6 } });
     const fc = assetsToGeoJson([asset]);
     expect(fc.features[0].geometry.coordinates).toEqual([-46.6, -23.5]);
+  });
+
+  it('inclui campos visuais por feature: iconKey, status, statusColor, selected', () => {
+    const cart = makeAsset({ id: 'c1', category: 'cart', code: 'ZAF-CART-01' });
+    const box = makeAsset({ id: 'b1', category: 'box', code: 'SJ-BOX-01' });
+    const fc = assetsToGeoJson([cart, box], 'b1');
+
+    const byId = Object.fromEntries(fc.features.map((f) => [f.properties.id, f.properties]));
+    expect(byId.c1.iconKey).toBe('cart');
+    expect(byId.b1.iconKey).toBe('box');
+    expect(byId.b1.selected).toBe(true);
+    expect(byId.c1.selected).toBe(false);
+    expect(byId.c1.statusColor).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(typeof byId.c1.name).toBe('string');
+    expect(byId.c1.code).toBe('ZAF-CART-01');
+  });
+});
+
+describe('MapV2 — computeInitialFit (fit por prioridade, outliers não destroem)', () => {
+  const makeAt = (id: string, lat: number, lng: number, o: Partial<AssetDevice> = {}): AssetDevice =>
+    makeAsset({
+      id,
+      category: o.category ?? 'cart',
+      telemetry: { ...makeAsset().telemetry, latitude: lat, longitude: lng },
+      ...o,
+    });
+
+  it('nenhum ativo -> kind none', () => {
+    expect(computeInitialFit([]).kind).toBe('none');
+  });
+
+  it('sem posição válida -> none (sem coordenada default fabricada)', () => {
+    const noPos = makeAsset({ telemetry: { ...makeAsset().telemetry, latitude: NaN, longitude: NaN } });
+    expect(computeInitialFit([noPos]).kind).toBe('none');
+  });
+
+  it('ativo único -> center com zoom confortável', () => {
+    const r = computeInitialFit([makeAt('a', -23.5, -46.6)]);
+    expect(r.kind).toBe('center');
+    if (r.kind === 'center') {
+      expect(r.lat).toBeCloseTo(-23.5, 6);
+      expect(r.zoom).toBe(16);
+    }
+  });
+
+  it('ativo selecionado tem prioridade absoluta (center zoom 17)', () => {
+    const assets = [
+      makeAt('sel', -23.5, -46.6),
+      makeAt('other', -22.5, -47.5),
+      makeAt('far', -21.0, -50.0),
+    ];
+    const r = computeInitialFit(assets, { selectedAssetId: 'sel' });
+    expect(r.kind).toBe('center');
+    if (r.kind === 'center') {
+      expect(r.lat).toBeCloseTo(-23.5, 6);
+      expect(r.lng).toBeCloseTo(-46.6, 6);
+      expect(r.zoom).toBe(17);
+    }
+  });
+
+  it('outlier MUITO distante não estoura o bounds (fica fora do fit, ainda renderizado)', () => {
+    // Núcleo em São Paulo + um outlier no Pará (mesma categoria, nunca removido).
+    const core = [
+      makeAt('a', -23.5505, -46.6333),
+      makeAt('b', -23.5620, -46.6500),
+      makeAt('c', -23.5400, -46.6100),
+      makeAt('d', -23.5450, -46.6250),
+    ];
+    const outlier = makeAt('far', -1.45, -48.48);
+    const r = computeInitialFit([...core, outlier]);
+    expect(r.kind).toBe('bounds');
+    if (r.kind === 'bounds') {
+      // O fit inicial de 80% (mín 4) não inclui o outlier (-1.45 do núcleo).
+      expect(r.bounds.south).toBeGreaterThan(-24);
+      expect(r.bounds.north).toBeLessThan(-23);
+      expect(r.outlierCount).toBe(1);
+    }
+  });
+
+  it('computeAllBounds (Ver todos) inclui o outlier de verdade', () => {
+    const core = [
+      makeAt('a', -23.5505, -46.6333),
+      makeAt('b', -23.5620, -46.6500),
+    ];
+    const outlier = makeAt('far', -1.45, -48.48);
+    const b = computeAllBounds([...core, outlier]);
+    expect(b).not.toBeNull();
+    expect(b!.south).toBeCloseTo(-23.5620, 4);
+    expect(b!.north).toBeCloseTo(-1.45, 4);
+  });
+
+  it('geofences da unidade têm prioridade sobre o fit por ativos', () => {
+    const assets = [makeAt('a', -23.5505, -46.6333), makeAt('b', -23.5620, -46.6500)];
+    const geo = makeGeofence({
+      type: 'polygon',
+      radius: undefined,
+      coordinates: [
+        [-23.55, -46.63],
+        [-23.551, -46.631],
+        [-23.552, -46.629],
+      ],
+    });
+    const r = computeInitialFit(assets, { geofences: [geo] });
+    expect(r.kind).toBe('bounds');
+  });
+});
+
+describe('MapV2 — spiderfy (expansão de cluster com ícones individuais)', () => {
+  it('spiderfyOffsets gera N posições distintas ao redor do centro (pixels)', () => {
+    const offsets = spiderfyOffsets(5);
+    expect(offsets).toHaveLength(5);
+    const unique = new Set(offsets.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`));
+    expect(unique.size).toBe(5);
+    // Primeiro offset no topo (ângulo -90° -> dy negativo), como spiderfy clássico.
+    expect(offsets[0][1]).toBeLessThan(0);
+  });
+
+  it('spiderfyOffsets(1) -> [0,0]', () => {
+    expect(spiderfyOffsets(1)).toEqual([[0, 0]]);
+  });
+
+  it('não expande clusters gigantes (limite SPIDERFY_MAX_MEMBERS)', () => {
+    const offsets = spiderfyOffsets(SPIDERFY_MAX_MEMBERS);
+    expect(offsets).toHaveLength(SPIDERFY_MAX_MEMBERS);
+  });
+
+  it('buildSpiderfyGeoJson preserva o ícone de cada membro (5 carrinhos + 2 caixas)', () => {
+    const members = [
+      ...['c1', 'c2', 'c3', 'c4', 'c5'].map((id) => makeAsset({ id, category: 'cart' })),
+      makeAsset({ id: 'b1', category: 'box' }),
+      makeAsset({ id: 'b2', category: 'box' }),
+    ];
+    const centers = members.map((a) => ({
+      lat: a.telemetry.latitude + (Math.random() - 0.5) * 0.0001,
+      lng: a.telemetry.longitude + (Math.random() - 0.5) * 0.0001,
+    }));
+    const fc = buildSpiderfyGeoJson(members, centers);
+
+    const icons = fc.features.map((f) => f.properties.iconKey);
+    expect(icons.filter((k) => k === 'cart')).toHaveLength(5);
+    expect(icons.filter((k) => k === 'box')).toHaveLength(2);
+    // Cada membro no seu próprio ponto (não todos sobrepostos).
+    const coords = fc.features.map((f) => f.geometry.coordinates.join(','));
+    expect(new Set(coords).size).toBe(members.length);
+  });
+
+  it('assetFeatureProps: subcategoria agro-cattle vira vaca (não genérico)', () => {
+    const p = assetFeatureProps(makeAsset({ id: 'v1', category: 'agro', subcategory: 'cattle' }));
+    expect(p.iconKey).toBe('agro-cattle');
   });
 });
