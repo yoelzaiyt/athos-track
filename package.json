@@ -10,6 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --project=unit",
+    "test:db": "vitest run --project=db",
     "api:dev": "tsx watch server/api/index.ts",
     "api:start": "tsx server/api/index.ts",
     "gt06:listen": "tsx server/gt06-listener/index.ts",
@@ -23,7 +25,9 @@
     "brgps:health-check": "tsx scripts/brgps-health-check.ts",
     "user:provision-auth": "tsx scripts/provision-user-auth.ts",
     "user:set-password": "tsx scripts/provision-user-password.ts",
-    "db:migrate": "tsx server/db/migrate.ts"
+    "db:migrate": "tsx server/db/migrate.ts",
+    "db:check": "tsx server/db/migrate.ts --check",
+    "db:baseline": "tsx server/db/migrate.ts --baseline"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
