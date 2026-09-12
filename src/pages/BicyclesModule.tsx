@@ -6,6 +6,7 @@ import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
+import { formatRelativeTimePtBr } from '../lib/format';
 import { AssetIcon } from '../components/common/AssetIconRegistry';
 
 export const BicyclesModule: React.FC = () => {
@@ -67,7 +68,7 @@ export const BicyclesModule: React.FC = () => {
     },
     {
       header: 'Última Comunicação',
-      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{row.telemetry.lastCommunication}</span>,
+      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{formatRelativeTimePtBr(row.telemetry.lastCommunication)}</span>,
     },
   ];
 

@@ -7,6 +7,7 @@ import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
+import { formatRelativeTimePtBr } from '../lib/format';
 
 const PROVIDER_HEALTH_LABEL: Record<string, { label: string; className: string }> = {
   HEALTHY: { label: 'Operante', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
@@ -204,7 +205,7 @@ export const TagsModule: React.FC = () => {
     },
     {
       header: 'Último Ping',
-      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{row.telemetry.lastCommunication}</span>,
+      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{formatRelativeTimePtBr(row.telemetry.lastCommunication)}</span>,
     },
   ];
 

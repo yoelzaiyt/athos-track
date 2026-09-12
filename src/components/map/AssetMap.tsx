@@ -1373,7 +1373,7 @@ export const AssetMap: React.FC<AssetMapProps> = ({
           <div style="font-weight: 700; color: ${tooltipTitleColor};">${asset.name} <span style="font-family: monospace; color: #0284c7;">(${asset.code})</span></div>
           <div style="color: ${tooltipSubColor}; margin-top: 2px;">${categoryLabel}</div>
           <div style="margin-top: 2px; font-weight: 700; color: ${statusBadge.color};">${statusBadge.label}</div>
-          <div style="font-size: 10px; color: ${tooltipSubColor}; margin-top: 2px;">Comunicação: ${asset.telemetry.lastCommunication}</div>
+          <div style="font-size: 10px; color: ${tooltipSubColor}; margin-top: 2px;">Comunicação: ${formatRelativeTimePtBr(asset.telemetry.lastCommunication)}</div>
         </div>`;
 
       let marker = markersRef.current[asset.id];
