@@ -10,6 +10,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { authRouter } from './routes-auth';
 import { restRouter } from './rest';
 import { providersRouter } from './routes-providers';
+import { apiKeysRouter } from './apiKeys';
 import { statsRouter } from './routes-stats';
 import { startRealtimeBridge } from './realtime';
 import { pool, closeDbPools } from './db';
@@ -89,6 +90,7 @@ app.use('/auth', authRouter);
 app.use('/rest', restRouter);
 app.use('/providers', providersRouter);
 app.use('/stats', statsRouter);
+app.use('/api-keys', apiKeysRouter);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: CORS_ORIGIN } });

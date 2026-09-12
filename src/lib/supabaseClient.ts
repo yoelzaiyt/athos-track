@@ -99,7 +99,10 @@ interface ApiResult<T> {
   error: { message: string; status: number } | null;
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
+// Exportado porque a página de Integrações fala com /api-keys, que não é uma
+// tabela (não cabe no .from(...).select() deste shim) — precisa de fetch
+// autenticado cru contra a API.
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
