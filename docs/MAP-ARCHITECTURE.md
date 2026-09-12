@@ -36,7 +36,7 @@ Todos raster XYZ, **todos keyless**. Não há vector tiles em uso.
 | 2D claro / STREETS | OpenStreetMap (`tile.openstreetmap.org`) | 19 |
 | 2D escuro / NIGHT | OSM + filtro CSS `.athos-dark-basemap-filter` | 19 |
 | SATELLITE | Esri World_Imagery (`server.arcgisonline.com`) | 19 |
-| HYBRID | Esri World_Imagery + labels CARTO `voyager_only_labels` | 19 |
+| HYBRID | Esri World_Imagery + labels Esri `World_Boundaries_and_Places` | 19 |
 | TERRAIN | OpenTopoMap (só V1) | 17 |
 | TRAFFIC | OSM + camada de congestionamento **mock** (assumida como fictícia) | 19 |
 
@@ -54,6 +54,14 @@ comentário no código.
 Correção (commit `7bc5701`): trocado pelo próprio OSM + filtro CSS
 `invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%)`. Validado com 350
 requests a `tile.openstreetmap.org`, 100% status 200. Não voltar a Stadia sem conta paga.
+
+### CARTO — também removido
+
+O overlay de labels do modo HYBRID usava CARTO `voyager_only_labels`. A CARTO
+passou a estampar "API KEY REQUIRED" nos tiles anônimos, então o commit `0b41967`
+trocou por Esri `World_Boundaries_and_Places`, que é keyless e do mesmo provedor
+da imagem de satélite. **Não há mais nenhuma referência a `cartocdn` no código** —
+a origem continua na allow-list da CSP em `vercel.json`, hoje sem uso.
 
 ## 3. Realtime
 
