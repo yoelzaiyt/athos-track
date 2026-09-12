@@ -28,6 +28,7 @@
     "db:migrate": "tsx server/db/migrate.ts",
     "db:check": "tsx server/db/migrate.ts --check",
     "db:baseline": "tsx server/db/migrate.ts --baseline",
+    "db:dump": "tsx scripts/dump-prod.ts",
     "test:all": "vitest run"
   },
   "dependencies": {
