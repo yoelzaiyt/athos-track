@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
-import { supabase, type Session } from '../lib/supabaseClient';
+import { api, type Session } from '../lib/apiClient';
 import { rowToClient, rowToUnit, unitToInsertRow } from '../lib/mappers';
 
 export type LoginFailureReason =
@@ -43,7 +43,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // restrito, em vez de assumir permissão).
 async function resolveUserProfile(session: Session): Promise<UserProfile> {
   const authUser = session.user;
-  const { data: row, error } = await supabase
+  const { data: row, error } = await api
     .from('user_profiles')
     .select('*')
     .eq('email', authUser.email)
@@ -55,7 +55,7 @@ async function resolveUserProfile(session: Session): Promise<UserProfile> {
 
   if (row) {
     if (!row.auth_user_id) {
-      supabase.from('user_profiles').update({ auth_user_id: authUser.id }).eq('id', row.id);
+      api.from('user_profiles').update({ auth_user_id: authUser.id }).eq('id', row.id);
     }
     return {
       id: row.id,
@@ -120,13 +120,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    api.auth.getSession().then(({ data: { session } }) => {
       applySession(session).finally(() => {
         if (!cancelled) setIsAuthLoading(false);
       });
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = api.auth.onAuthStateChange((_event, session) => {
       applySession(session);
     });
 
@@ -141,8 +141,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // de Tenants (src/pages/admin/ClientsPage.tsx).
   const loadClientsAndUnits = async () => {
     const [clientsRes, unitsRes] = await Promise.all([
-      supabase.from('company_clients').select('*').order('name'),
-      supabase.from('company_units').select('*').order('name'),
+      api.from('company_clients').select('*').order('name'),
+      api.from('company_units').select('*').order('name'),
     ]);
     if (clientsRes.error) console.error('[AuthContext] Failed to load clients:', clientsRes.error.message);
     if (unitsRes.error) console.error('[AuthContext] Failed to load units:', unitsRes.error.message);
@@ -174,7 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // erro de SQL (ex.: coluna faltando por migração atrasada no banco), que é o
   // oposto do diagnóstico certo e já custou horas de investigação.
   const login = async (email: string, pass: string): Promise<LoginResult> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    const { error } = await api.auth.signInWithPassword({ email, password: pass });
     if (!error) {
       // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
       return { ok: true };
@@ -194,7 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    supabase.auth.signOut();
+    api.auth.signOut();
   };
 
   // Cadastro real de unidade (src/pages/admin/UnitsPage.tsx, que antes só
@@ -202,7 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // na página, porque a lista de unidades vive aqui — inserir e devolver sem
   // atualizar `units` deixaria a tela mentindo até o próximo refresh.
   const addUnit = async (unit: Omit<CompanyUnit, 'id'>): Promise<CompanyUnit | null> => {
-    const { data, error } = await supabase.from('company_units').insert(unitToInsertRow(unit)).select().single();
+    const { data, error } = await api.from('company_units').insert(unitToInsertRow(unit)).select().single();
     if (error || !data) {
       console.error('[AuthContext] addUnit failed:', error?.message);
       return null;

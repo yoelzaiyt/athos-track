@@ -11,7 +11,7 @@
 // fetch no mount.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { subscribeRealtimeStatus, type RealtimeConnectionStatus } from '../lib/supabaseClient';
+import { subscribeRealtimeStatus, type RealtimeConnectionStatus } from '../lib/apiClient';
 import { countDerivedStatuses, type StatusBasisAsset, type DerivedStatusKey } from '../lib/deviceStatus';
 
 const API_URL = import.meta.env.VITE_API_URL as string;

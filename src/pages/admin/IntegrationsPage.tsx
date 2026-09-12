@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2, Plus, X, Copy, Ban } from 'lucide-react';
 import { useAssets } from '../../context/AssetContext';
 import { SystemIntegration, AssetDevice } from '../../types';
-import { apiFetch } from '../../lib/supabaseClient';
+import { apiFetch } from '../../lib/apiClient';
 
 // Conta dispositivos conectados de verdade a partir dos ativos reais, em vez
 // de um contador manual que nunca era atualizado. Se a integração declara um

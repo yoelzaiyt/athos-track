@@ -25,7 +25,7 @@ import {
   SystemIntegration,
   UserProfile,
 } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/apiClient';
 import { uiRefreshLatencyMs } from '../lib/latency';
 import {
   rowToAsset, assetToInsertRow, assetUpdatesToRow,
@@ -194,30 +194,30 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         routeTemplatesRes, pairingsRes, trafficRes, poisRes, providerDevicesRes, providerHealthRes,
         integrationsRes, usersRes,
       ] = await Promise.all([
-        supabase.from('assets').select('*').order('created_at', { ascending: false }),
-        supabase.from('system_alerts').select('*').order('created_at', { ascending: false }),
-        supabase.from('geofences').select('*').order('created_at', { ascending: false }),
-        supabase.from('cargo_shipments').select('*').order('created_at', { ascending: false }),
-        supabase.from('drivers').select('*').order('created_at', { ascending: false }),
-        supabase.from('animals').select('*').order('created_at', { ascending: false }),
-        supabase.from('maintenance_records').select('*').order('created_at', { ascending: false }),
-        supabase.from('trip_records').select('*').order('created_at', { ascending: false }),
-        supabase.from('cart_recoveries').select('*').order('timestamp', { ascending: false }),
-        supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('greylist_entries').select('*').order('added_at', { ascending: false }),
-        supabase.from('asset_recovery_cases').select('*').order('opened_at', { ascending: false }),
-        supabase.from('route_templates').select('*').order('created_at', { ascending: false }),
-        supabase.from('asset_pairings').select('*'),
-        supabase.from('traffic_segments').select('*'),
-        supabase.from('points_of_interest').select('*'),
-        supabase.from('provider_devices').select('*').order('discovered_at', { ascending: false }),
+        api.from('assets').select('*').order('created_at', { ascending: false }),
+        api.from('system_alerts').select('*').order('created_at', { ascending: false }),
+        api.from('geofences').select('*').order('created_at', { ascending: false }),
+        api.from('cargo_shipments').select('*').order('created_at', { ascending: false }),
+        api.from('drivers').select('*').order('created_at', { ascending: false }),
+        api.from('animals').select('*').order('created_at', { ascending: false }),
+        api.from('maintenance_records').select('*').order('created_at', { ascending: false }),
+        api.from('trip_records').select('*').order('created_at', { ascending: false }),
+        api.from('cart_recoveries').select('*').order('timestamp', { ascending: false }),
+        api.from('work_orders').select('*').order('created_at', { ascending: false }),
+        api.from('greylist_entries').select('*').order('added_at', { ascending: false }),
+        api.from('asset_recovery_cases').select('*').order('opened_at', { ascending: false }),
+        api.from('route_templates').select('*').order('created_at', { ascending: false }),
+        api.from('asset_pairings').select('*'),
+        api.from('traffic_segments').select('*'),
+        api.from('points_of_interest').select('*'),
+        api.from('provider_devices').select('*').order('discovered_at', { ascending: false }),
         // Sem filtro de provider: BRGPS (conta 1) e BRGPS_2 (conta 2, China,
         // ativada em 2026-09-10) são contas independentes, cada uma com sua
         // própria linha de health — filtrar por 'BRGPS' escondia o status
         // real da conta que hoje serve as 10 tags Zaffari.
-        supabase.from('provider_health').select('*'),
-        supabase.from('system_integrations').select('*').order('created_at', { ascending: false }),
-        supabase.from('user_profiles').select('*').order('name'),
+        api.from('provider_health').select('*'),
+        api.from('system_integrations').select('*').order('created_at', { ascending: false }),
+        api.from('user_profiles').select('*').order('name'),
       ]);
 
       if (cancelled) return;
@@ -277,7 +277,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // carregado. Ativos ainda simulados (provider null) não são afetados aqui,
   // continuam só na simulação client-side abaixo.
   useEffect(() => {
-    const assetsChannel = supabase
+    const assetsChannel = api
       .channel('athos-assets-realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'assets' }, (payload) => {
         const updated = rowToAsset(payload.new as Record<string, unknown>);
@@ -314,7 +314,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .subscribe();
 
     return () => {
-      supabase.removeChannel(assetsChannel);
+      api.removeChannel(assetsChannel);
     };
   }, []);
 
@@ -428,14 +428,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const acknowledgeAlert = async (alertId: string) => {
-    const { error } = await supabase.from('system_alerts').update({ acknowledged: true }).eq('id', alertId);
+    const { error } = await api.from('system_alerts').update({ acknowledged: true }).eq('id', alertId);
     logError('acknowledgeAlert', error);
     if (error) return;
     setAlerts((prev) => prev.map((alt) => (alt.id === alertId ? { ...alt, acknowledged: true } : alt)));
   };
 
   const addGeofence = async (geofence: Geofence) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('geofences')
       .insert(geofenceToInsertRow(geofence))
       .select()
@@ -446,21 +446,21 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateGeofence = async (geofenceId: string, updates: Partial<Geofence>) => {
-    const { error } = await supabase.from('geofences').update(geofenceUpdatesToRow(updates)).eq('id', geofenceId);
+    const { error } = await api.from('geofences').update(geofenceUpdatesToRow(updates)).eq('id', geofenceId);
     logError('updateGeofence', error);
     if (error) return;
     setGeofences((prev) => prev.map((g) => (g.id === geofenceId ? { ...g, ...updates } : g)));
   };
 
   const deleteGeofence = async (geofenceId: string) => {
-    const { error } = await supabase.from('geofences').delete().eq('id', geofenceId);
+    const { error } = await api.from('geofences').delete().eq('id', geofenceId);
     logError('deleteGeofence', error);
     if (error) return;
     setGeofences((prev) => prev.filter((g) => g.id !== geofenceId));
   };
 
   const addAsset = async (asset: AssetDevice) => {
-    const { data, error } = await supabase.from('assets').insert(assetToInsertRow(asset)).select().single();
+    const { data, error } = await api.from('assets').insert(assetToInsertRow(asset)).select().single();
     logError('addAsset', error);
     if (error || !data) return;
     setAssets((prev) => [rowToAsset(data), ...prev]);
@@ -469,35 +469,35 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRUD real de integrações (src/pages/admin/IntegrationsPage.tsx). Antes a
   // página era só leitura com um alert() no botão de criar.
   const addIntegration = async (integration: Omit<SystemIntegration, 'id'>) => {
-    const { data, error } = await supabase.from('system_integrations').insert(integrationToInsertRow(integration)).select().single();
+    const { data, error } = await api.from('system_integrations').insert(integrationToInsertRow(integration)).select().single();
     logError('addIntegration', error);
     if (error || !data) return;
     setIntegrations((prev) => [rowToIntegration(data), ...prev]);
   };
 
   const updateIntegration = async (integrationId: string, updates: Partial<SystemIntegration>) => {
-    const { error } = await supabase.from('system_integrations').update(integrationUpdatesToRow(updates)).eq('id', integrationId);
+    const { error } = await api.from('system_integrations').update(integrationUpdatesToRow(updates)).eq('id', integrationId);
     logError('updateIntegration', error);
     if (error) return;
     setIntegrations((prev) => prev.map((i) => (i.id === integrationId ? { ...i, ...updates } : i)));
   };
 
   const deleteIntegration = async (integrationId: string) => {
-    const { error } = await supabase.from('system_integrations').delete().eq('id', integrationId);
+    const { error } = await api.from('system_integrations').delete().eq('id', integrationId);
     logError('deleteIntegration', error);
     if (error) return;
     setIntegrations((prev) => prev.filter((i) => i.id !== integrationId));
   };
 
   const updateAsset = async (assetId: string, updates: Partial<AssetDevice>) => {
-    const { error } = await supabase.from('assets').update(assetUpdatesToRow(updates)).eq('id', assetId);
+    const { error } = await api.from('assets').update(assetUpdatesToRow(updates)).eq('id', assetId);
     logError('updateAsset', error);
     if (error) return;
     setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, ...updates } : a)));
   };
 
   const deleteAsset = async (assetId: string) => {
-    const { error } = await supabase.from('assets').delete().eq('id', assetId);
+    const { error } = await api.from('assets').delete().eq('id', assetId);
     logError('deleteAsset', error);
     if (error) return;
     setAssets((prev) => prev.filter((a) => a.id !== assetId));
@@ -513,7 +513,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       telemetry: { ...current.telemetry, ignition: nextBlocked ? false : current.telemetry.ignition },
       status: nextBlocked ? 'maintenance' : current.status,
     };
-    const { error } = await supabase.from('assets').update(assetUpdatesToRow(patch)).eq('id', assetId);
+    const { error } = await api.from('assets').update(assetUpdatesToRow(patch)).eq('id', assetId);
     logError('toggleVehicleBlock', error);
     if (error) return;
     setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, ...patch } : a)));
@@ -523,14 +523,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const current = assets.find((a) => a.id === assetId);
     if (!current) return;
     const nextLocked = !current.isDoorLocked;
-    const { error } = await supabase.from('assets').update({ is_door_locked: nextLocked }).eq('id', assetId);
+    const { error } = await api.from('assets').update({ is_door_locked: nextLocked }).eq('id', assetId);
     logError('toggleDoorLock', error);
     if (error) return;
     setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, isDoorLocked: nextLocked } : a)));
   };
 
   const registerSealEvent = async (shipmentId: string, status: SealStatus, trigger: SealTriggerMethod) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('cargo_shipments')
       .update({ seal_status: status, seal_last_trigger: trigger, seal_last_event_time: 'Agora' })
       .eq('id', shipmentId);
@@ -546,42 +546,42 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addDriver = async (driver: Driver) => {
-    const { data, error } = await supabase.from('drivers').insert(driverToInsertRow(driver)).select().single();
+    const { data, error } = await api.from('drivers').insert(driverToInsertRow(driver)).select().single();
     logError('addDriver', error);
     if (error || !data) return;
     setDrivers((prev) => [rowToDriver(data), ...prev]);
   };
 
   const updateDriver = async (driverId: string, updates: Partial<Driver>) => {
-    const { error } = await supabase.from('drivers').update(driverUpdatesToRow(updates)).eq('id', driverId);
+    const { error } = await api.from('drivers').update(driverUpdatesToRow(updates)).eq('id', driverId);
     logError('updateDriver', error);
     if (error) return;
     setDrivers((prev) => prev.map((d) => (d.id === driverId ? { ...d, ...updates } : d)));
   };
 
   const deleteDriver = async (driverId: string) => {
-    const { error } = await supabase.from('drivers').delete().eq('id', driverId);
+    const { error } = await api.from('drivers').delete().eq('id', driverId);
     logError('deleteDriver', error);
     if (error) return;
     setDrivers((prev) => prev.filter((d) => d.id !== driverId));
   };
 
   const addAnimal = async (animal: Animal) => {
-    const { data, error } = await supabase.from('animals').insert(animalToInsertRow(animal)).select().single();
+    const { data, error } = await api.from('animals').insert(animalToInsertRow(animal)).select().single();
     logError('addAnimal', error);
     if (error || !data) return;
     setAnimals((prev) => [rowToAnimal(data), ...prev]);
   };
 
   const updateAnimal = async (animalId: string, updates: Partial<Animal>) => {
-    const { error } = await supabase.from('animals').update(animalUpdatesToRow(updates)).eq('id', animalId);
+    const { error } = await api.from('animals').update(animalUpdatesToRow(updates)).eq('id', animalId);
     logError('updateAnimal', error);
     if (error) return;
     setAnimals((prev) => prev.map((a) => (a.id === animalId ? { ...a, ...updates } : a)));
   };
 
   const deleteAnimal = async (animalId: string) => {
-    const { error } = await supabase.from('animals').delete().eq('id', animalId);
+    const { error } = await api.from('animals').delete().eq('id', animalId);
     logError('deleteAnimal', error);
     if (error) return;
     setAnimals((prev) => prev.filter((a) => a.id !== animalId));
@@ -604,7 +604,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addUserProfile = async (user: Omit<UserProfile, 'id'>) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('user_profiles')
       .insert(userProfileToInsertRow(user))
       .select()
@@ -615,21 +615,21 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateUserProfile = async (userId: string, updates: Partial<UserProfile>) => {
-    const { error } = await supabase.from('user_profiles').update(userProfileUpdatesToRow(updates)).eq('id', userId);
+    const { error } = await api.from('user_profiles').update(userProfileUpdatesToRow(updates)).eq('id', userId);
     logError('updateUserProfile', error);
     if (error) return;
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
   };
 
   const deleteUserProfile = async (userId: string) => {
-    const { error } = await supabase.from('user_profiles').delete().eq('id', userId);
+    const { error } = await api.from('user_profiles').delete().eq('id', userId);
     logError('deleteUserProfile', error);
     if (error) return;
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
   const addMaintenanceRecord = async (record: MaintenanceRecord) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('maintenance_records')
       .insert(maintenanceToInsertRow(record))
       .select()
@@ -640,7 +640,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateMaintenanceRecord = async (recordId: string, updates: Partial<MaintenanceRecord>) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('maintenance_records')
       .update(maintenanceUpdatesToRow(updates))
       .eq('id', recordId);
@@ -650,28 +650,28 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteMaintenanceRecord = async (recordId: string) => {
-    const { error } = await supabase.from('maintenance_records').delete().eq('id', recordId);
+    const { error } = await api.from('maintenance_records').delete().eq('id', recordId);
     logError('deleteMaintenanceRecord', error);
     if (error) return;
     setMaintenanceRecords((prev) => prev.filter((m) => m.id !== recordId));
   };
 
   const addTrip = async (trip: TripRecord) => {
-    const { data, error } = await supabase.from('trip_records').insert(tripToInsertRow(trip)).select().single();
+    const { data, error } = await api.from('trip_records').insert(tripToInsertRow(trip)).select().single();
     logError('addTrip', error);
     if (error || !data) return;
     setTrips((prev) => [rowToTrip(data), ...prev]);
   };
 
   const updateTrip = async (tripId: string, updates: Partial<TripRecord>) => {
-    const { error } = await supabase.from('trip_records').update(tripUpdatesToRow(updates)).eq('id', tripId);
+    const { error } = await api.from('trip_records').update(tripUpdatesToRow(updates)).eq('id', tripId);
     logError('updateTrip', error);
     if (error) return;
     setTrips((prev) => prev.map((t) => (t.id === tripId ? { ...t, ...updates } : t)));
   };
 
   const deleteTrip = async (tripId: string) => {
-    const { error } = await supabase.from('trip_records').delete().eq('id', tripId);
+    const { error } = await api.from('trip_records').delete().eq('id', tripId);
     logError('deleteTrip', error);
     if (error) return;
     setTrips((prev) => prev.filter((t) => t.id !== tripId));
@@ -693,7 +693,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       timestamp: 'Agora',
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('cart_recoveries')
       .insert(recoveryToInsertRow(recoveryRow))
       .select()
@@ -702,7 +702,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (error || !data) return;
     setRecoveries((prev) => [rowToRecovery(data), ...prev]);
 
-    const { error: assetErr } = await supabase
+    const { error: assetErr } = await api
       .from('assets')
       .update({ status: 'available', geofence_name: null })
       .eq('id', assetId);
@@ -713,7 +713,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
     }
 
-    const { error: alertErr } = await supabase
+    const { error: alertErr } = await api
       .from('system_alerts')
       .update({ acknowledged: true })
       .eq('asset_id', assetId)
@@ -727,28 +727,28 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addWorkOrder = async (order: WorkOrder) => {
-    const { data, error } = await supabase.from('work_orders').insert(workOrderToInsertRow(order)).select().single();
+    const { data, error } = await api.from('work_orders').insert(workOrderToInsertRow(order)).select().single();
     logError('addWorkOrder', error);
     if (error || !data) return;
     setWorkOrders((prev) => [rowToWorkOrder(data), ...prev]);
   };
 
   const updateWorkOrder = async (orderId: string, updates: Partial<WorkOrder>) => {
-    const { error } = await supabase.from('work_orders').update(workOrderUpdatesToRow(updates)).eq('id', orderId);
+    const { error } = await api.from('work_orders').update(workOrderUpdatesToRow(updates)).eq('id', orderId);
     logError('updateWorkOrder', error);
     if (error) return;
     setWorkOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)));
   };
 
   const deleteWorkOrder = async (orderId: string) => {
-    const { error } = await supabase.from('work_orders').delete().eq('id', orderId);
+    const { error } = await api.from('work_orders').delete().eq('id', orderId);
     logError('deleteWorkOrder', error);
     if (error) return;
     setWorkOrders((prev) => prev.filter((o) => o.id !== orderId));
   };
 
   const addGreylistEntry = async (entry: GreylistEntry) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('greylist_entries')
       .insert(greylistEntryToInsertRow(entry))
       .select()
@@ -759,14 +759,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteGreylistEntry = async (entryId: string) => {
-    const { error } = await supabase.from('greylist_entries').delete().eq('id', entryId);
+    const { error } = await api.from('greylist_entries').delete().eq('id', entryId);
     logError('deleteGreylistEntry', error);
     if (error) return;
     setGreylist((prev) => prev.filter((g) => g.id !== entryId));
   };
 
   const addRecoveryCase = async (recoveryCase: AssetRecoveryCase) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('asset_recovery_cases')
       .insert(recoveryCaseToInsertRow(recoveryCase))
       .select()
@@ -777,7 +777,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateRecoveryCase = async (caseId: string, updates: Partial<AssetRecoveryCase>) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('asset_recovery_cases')
       .update(recoveryCaseUpdatesToRow(updates))
       .eq('id', caseId);
@@ -787,7 +787,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addRouteTemplate = async (template: RouteTemplate) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('route_templates')
       .insert(routeTemplateToInsertRow(template))
       .select()
@@ -798,14 +798,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteRouteTemplate = async (templateId: string) => {
-    const { error } = await supabase.from('route_templates').delete().eq('id', templateId);
+    const { error } = await api.from('route_templates').delete().eq('id', templateId);
     logError('deleteRouteTemplate', error);
     if (error) return;
     setRouteTemplates((prev) => prev.filter((t) => t.id !== templateId));
   };
 
   const addAssetPairing = async (pairing: AssetPairing) => {
-    const { data, error } = await supabase
+    const { data, error } = await api
       .from('asset_pairings')
       .insert(pairingToInsertRow(pairing))
       .select()
@@ -816,7 +816,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateAssetPairing = async (pairingId: string, updates: Partial<AssetPairing>) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('asset_pairings')
       .update(pairingUpdatesToRow(updates))
       .eq('id', pairingId);
@@ -826,7 +826,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteAssetPairing = async (pairingId: string) => {
-    const { error } = await supabase.from('asset_pairings').delete().eq('id', pairingId);
+    const { error } = await api.from('asset_pairings').delete().eq('id', pairingId);
     logError('deleteAssetPairing', error);
     if (error) return;
     setAssetPairings((prev) => prev.filter((p) => p.id !== pairingId));
@@ -834,7 +834,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const sendRemoteCommand = async (assetId: string, command: string, label: string) => {
     const lastRemoteCommand = { command, label, sentAt: 'Agora' };
-    const { error } = await supabase.from('assets').update({ last_remote_command: lastRemoteCommand }).eq('id', assetId);
+    const { error } = await api.from('assets').update({ last_remote_command: lastRemoteCommand }).eq('id', assetId);
     logError('sendRemoteCommand', error);
     if (error) return;
     setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, lastRemoteCommand } : a)));
@@ -842,7 +842,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const calibrateOdometer = async (assetId: string, newOdometer: number) => {
     const lastRemoteCommand = { command: '6B', label: 'Calibração de Odômetro', sentAt: 'Agora' };
-    const { error } = await supabase
+    const { error } = await api
       .from('assets')
       .update({ telemetry_odometer: newOdometer, last_remote_command: lastRemoteCommand })
       .eq('id', assetId);
@@ -858,7 +858,7 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pushOfflineWhitelist = async (assetId: string) => {
     const syncedAt = new Date().toISOString();
     const lastRemoteCommand = { command: '94Down', label: 'Sincronização de Whitelist Offline', sentAt: 'Agora' };
-    const { error } = await supabase
+    const { error } = await api
       .from('assets')
       .update({ offline_whitelist_synced_at: syncedAt, last_remote_command: lastRemoteCommand })
       .eq('id', assetId);
@@ -880,14 +880,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const device = providerDevices.find((d) => d.id === providerDeviceId);
     if (!device) return;
 
-    const { error: deviceError } = await supabase
+    const { error: deviceError } = await api
       .from('provider_devices')
       .update({ asset_id: assetId, status: 'ASSIGNED' })
       .eq('id', providerDeviceId);
     logError('linkProviderDeviceToAsset (provider_devices)', deviceError);
     if (deviceError) return;
 
-    const { error: assetError } = await supabase
+    const { error: assetError } = await api
       .from('assets')
       .update({ provider: device.provider, provider_device_id: providerDeviceId, mac: device.mac ?? null })
       .eq('id', assetId);
@@ -903,14 +903,14 @@ export const AssetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const unlinkProviderDevice = async (providerDeviceId: string, assetId: string) => {
-    const { error: deviceError } = await supabase
+    const { error: deviceError } = await api
       .from('provider_devices')
       .update({ asset_id: null, status: 'UNASSIGNED' })
       .eq('id', providerDeviceId);
     logError('unlinkProviderDevice (provider_devices)', deviceError);
     if (deviceError) return;
 
-    const { error: assetError } = await supabase
+    const { error: assetError } = await api
       .from('assets')
       .update({ provider: null, provider_device_id: null })
       .eq('id', assetId);

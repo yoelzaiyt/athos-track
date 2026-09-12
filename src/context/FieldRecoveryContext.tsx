@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { FieldRecoveryOccurrence, FieldRecoveryStatus, FieldRecoveryTimelineStep } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/apiClient';
 import {
   rowToRecoveryOccurrence,
   recoveryOccurrenceToInsertRow,
@@ -36,7 +36,7 @@ function logError(label: string, error: { message: string } | null) {
 }
 
 async function fetchTimelineFor(occurrenceId: string) {
-  const { data, error } = await supabase
+  const { data, error } = await api
     .from('recovery_timeline_events')
     .select('*')
     .eq('occurrence_id', occurrenceId)
@@ -54,8 +54,8 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
 
     (async () => {
       const [occRes, evRes] = await Promise.all([
-        supabase.from('recovery_occurrences').select('*').order('created_at', { ascending: false }),
-        supabase.from('recovery_timeline_events').select('*').order('created_at', { ascending: true }),
+        api.from('recovery_occurrences').select('*').order('created_at', { ascending: false }),
+        api.from('recovery_timeline_events').select('*').order('created_at', { ascending: true }),
       ]);
       if (cancelled) return;
 
@@ -81,7 +81,7 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const refreshOccurrence = async (id: string) => {
-    const { data, error } = await supabase.from('recovery_occurrences').select('*').eq('id', id).single();
+    const { data, error } = await api.from('recovery_occurrences').select('*').eq('id', id).single();
     logError('refreshOccurrence', error);
     if (error || !data) return;
     const timeline = await fetchTimelineFor(id);
@@ -91,11 +91,11 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const createOccurrence = async (payload: NewOccurrenceInput): Promise<FieldRecoveryOccurrence | null> => {
     const row = recoveryOccurrenceToInsertRow({ ...payload, status: payload.status ?? 'detectado' });
-    const { data, error } = await supabase.from('recovery_occurrences').insert(row).select().single();
+    const { data, error } = await api.from('recovery_occurrences').insert(row).select().single();
     logError('createOccurrence', error);
     if (error || !data) return null;
 
-    await supabase.from('recovery_timeline_events').insert([
+    await api.from('recovery_timeline_events').insert([
       { occurrence_id: data.id, step: 'exit_detectado', user_name: 'Sistema (simulado)' },
       { occurrence_id: data.id, step: 'ocorrencia_criada', user_name: 'Sistema (simulado)' },
     ]);
@@ -112,13 +112,13 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
       assignedUserName: userName,
       assignedAt: new Date().toISOString(),
     };
-    const { error } = await supabase
+    const { error } = await api
       .from('recovery_occurrences')
       .update(recoveryOccurrenceUpdatesToRow(updates))
       .eq('id', id);
     logError('assignOccurrence', error);
     if (error) return;
-    await supabase.from('recovery_timeline_events').insert({ occurrence_id: id, step: 'atribuido', user_name: userName });
+    await api.from('recovery_timeline_events').insert({ occurrence_id: id, step: 'atribuido', user_name: userName });
     await refreshOccurrence(id);
   };
 
@@ -129,14 +129,14 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
     userName?: string,
     note?: string
   ) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('recovery_occurrences')
       .update(recoveryOccurrenceUpdatesToRow({ status }))
       .eq('id', id);
     logError('updateOccurrenceStatus', error);
     if (error) return;
     if (timelineStep) {
-      await supabase
+      await api
         .from('recovery_timeline_events')
         .insert({ occurrence_id: id, step: timelineStep, user_name: userName, note });
     }
@@ -144,13 +144,13 @@ export const FieldRecoveryProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const cancelOccurrence = async (id: string, reason: string) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('recovery_occurrences')
       .update(recoveryOccurrenceUpdatesToRow({ status: 'cancelado', cancelReason: reason }))
       .eq('id', id);
     logError('cancelOccurrence', error);
     if (error) return;
-    await supabase
+    await api
       .from('recovery_timeline_events')
       .insert({ occurrence_id: id, step: 'ocorrencia_encerrada', note: reason });
     await refreshOccurrence(id);

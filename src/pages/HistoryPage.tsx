@@ -3,7 +3,7 @@ import { Play, Pause, Calendar, Clock, MapPin, Navigation, Filter } from 'lucide
 import { useAssets } from '../context/AssetContext';
 import { AssetMap } from '../components/map/AssetMap';
 import { RoutePoint } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/apiClient';
 import { rowToRoutePoint } from '../lib/mappers';
 
 type RangePreset = 'today' | '24h' | '7d' | '30d' | 'custom';
@@ -55,7 +55,7 @@ export const HistoryPage: React.FC = () => {
     }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await api
         .from('asset_route_points')
         .select('*')
         .eq('asset_id', targetAsset.id)

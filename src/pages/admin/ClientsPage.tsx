@@ -3,7 +3,7 @@ import { Building2, Plus, Pencil, Power, PowerOff, X, Palette, Cable, Image } fr
 import { DataTable, Column } from '../../components/common/DataTable';
 import { useAuth } from '../../context/AuthContext';
 import { CompanyClient } from '../../types';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/apiClient';
 import { clientToInsertRow, clientUpdatesToRow } from '../../lib/mappers';
 
 // Único provider real registrado hoje (server/integrations/shared/ProviderRegistry.ts)
@@ -100,13 +100,13 @@ const TenantFormModal: React.FC<TenantFormModalProps> = ({ editing, onClose, onS
     setSaving(true);
     try {
       if (editing) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await api
           .from('company_clients')
           .update(clientUpdatesToRow(form))
           .eq('id', editing.id);
         if (updateError) throw new Error(updateError.message);
       } else {
-        const { error: insertError } = await supabase
+        const { error: insertError } = await api
           .from('company_clients')
           .insert(clientToInsertRow({ ...form, cnpj: form.cnpj || '00.000.000/0001-00' }));
         if (insertError) throw new Error(insertError.message);
@@ -310,7 +310,7 @@ export const ClientsPage: React.FC = () => {
     setTogglingId(client.id);
     try {
       const nextStatus = client.status === 'active' ? 'inactive' : 'active';
-      const { error } = await supabase.from('company_clients').update({ status: nextStatus }).eq('id', client.id);
+      const { error } = await api.from('company_clients').update({ status: nextStatus }).eq('id', client.id);
       if (!error) await refreshClients();
     } finally {
       setTogglingId(null);

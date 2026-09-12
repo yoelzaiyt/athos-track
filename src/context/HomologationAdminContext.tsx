@@ -5,7 +5,7 @@ import {
   HomologationEvent,
   HomologationReport,
 } from '../types/homologation';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/apiClient';
 import {
   rowToHomologationRequest, homologationRequestUpdatesToRow,
   rowToHomologationDevice,
@@ -42,10 +42,10 @@ export const HomologationAdminProvider: React.FC<{ children: React.ReactNode }> 
 
     (async () => {
       const [requestsRes, devicesRes, eventsRes, reportsRes] = await Promise.all([
-        supabase.from('homologation_requests').select('*').order('created_at', { ascending: false }),
-        supabase.from('homologation_devices').select('*').order('created_at', { ascending: false }),
-        supabase.from('homologation_events').select('*').order('created_at', { ascending: false }),
-        supabase.from('homologation_reports').select('*').order('created_at', { ascending: false }),
+        api.from('homologation_requests').select('*').order('created_at', { ascending: false }),
+        api.from('homologation_devices').select('*').order('created_at', { ascending: false }),
+        api.from('homologation_events').select('*').order('created_at', { ascending: false }),
+        api.from('homologation_reports').select('*').order('created_at', { ascending: false }),
       ]);
 
       if (cancelled) return;
@@ -72,7 +72,7 @@ export const HomologationAdminProvider: React.FC<{ children: React.ReactNode }> 
   // firmware) — a solicitação original vem do fornecedor via portal público,
   // mas a equipe interna pode corrigir/ajustar depois de revisar.
   const updateRequestFields = async (id: string, updates: Partial<HomologationRequest>) => {
-    const { error } = await supabase
+    const { error } = await api
       .from('homologation_requests')
       .update(homologationRequestUpdatesToRow(updates))
       .eq('id', id);

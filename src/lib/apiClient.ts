@@ -1,7 +1,7 @@
 // Cliente HTTP fino que imita o subconjunto do supabase-js realmente usado
 // pelo app (.from(table).select().order().eq().single()/.maybeSingle(),
 // .insert(), .update(), .delete(), .channel(...).on('postgres_changes', ...),
-// supabase.auth.signInWithPassword/getSession/onAuthStateChange/signOut).
+// api.auth.signInWithPassword/getSession/onAuthStateChange/signOut).
 // Existe pra que a migração Supabase -> API própria (server/api) não exigisse
 // reescrever AssetContext.tsx/AuthContext.tsx/mappers.ts inteiros — eles
 // continuam chamando exatamente os mesmos métodos em cima de `supabase`.
@@ -266,7 +266,7 @@ function channel(_name: string) {
   return api;
 }
 
-export const supabase = {
+export const api = {
   from<T = any>(table: string) {
     return new QueryBuilder<T>(table);
   },
