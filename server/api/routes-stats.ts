@@ -6,7 +6,7 @@
 //                              server_received_at), speed, e o par de últimos
 //                              pontos de trilha pra derivar deslocamento.
 //
-// Conceitos (ver docs/OPERATIONAL-REFINEMENT-REPORT.md, EVENT_DEFINITION):
+// Conceitos (ver docs/archive/OPERATIONAL-REFINEMENT-REPORT.md, EVENT_DEFINITION):
 //   - TELEMETRY (LOCATION_UPDATE): cada leitura real do dispositivo persistida
 //     em asset_route_points (deduplicada por fingerprint). Uma chamada de
 //     polling da API BRGPS que não traz leitura nova NÃO cria ponto.
