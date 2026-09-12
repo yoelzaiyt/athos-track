@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
 import { supabase, type Session } from '../lib/supabaseClient';
-import { rowToClient, rowToUnit } from '../lib/mappers';
+import { rowToClient, rowToUnit, unitToInsertRow } from '../lib/mappers';
 
 export type LoginFailureReason =
   | 'invalid_credentials' // 401 — e-mail ou senha errados (o caso normal)
@@ -30,6 +30,7 @@ interface AuthContextType {
   setSelectedClientId: (id: string) => void;
   setSelectedUnitId: (id: string) => void;
   canAccessModule: (moduleKey: string) => boolean;
+  addUnit: (unit: Omit<CompanyUnit, 'id'>) => Promise<CompanyUnit | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -196,6 +197,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.signOut();
   };
 
+  // Cadastro real de unidade (src/pages/admin/UnitsPage.tsx, que antes só
+  // mostrava um alert() de sucesso sem gravar nada). Fica no contexto, e não
+  // na página, porque a lista de unidades vive aqui — inserir e devolver sem
+  // atualizar `units` deixaria a tela mentindo até o próximo refresh.
+  const addUnit = async (unit: Omit<CompanyUnit, 'id'>): Promise<CompanyUnit | null> => {
+    const { data, error } = await supabase.from('company_units').insert(unitToInsertRow(unit)).select().single();
+    if (error || !data) {
+      console.error('[AuthContext] addUnit failed:', error?.message);
+      return null;
+    }
+    const created = rowToUnit(data);
+    setUnits((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    return created;
+  };
+
   // Preview local de papel (RBAC) para testar a UI sob outras permissões — não
   // grava no banco. Só faz sentido enquanto o RLS não distingue papéis (hoje é
   // por sessão autenticada ou não, não por role); virar "de verdade" exigiria
@@ -298,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedClientId,
         setSelectedUnitId,
         canAccessModule,
+        addUnit,
       }}
     >
       {children}
