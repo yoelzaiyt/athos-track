@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import { Client } from 'pg';
+import { sslFor } from '../server/db/connectionSsl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(__dirname, '..');
@@ -57,7 +58,7 @@ async function main(email: string, password: string) {
   const connectionString = process.env.DATABASE_URL!;
   const client = new Client({
     connectionString,
-    ssl: connectionString.includes('railway') || connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    ssl: sslFor(connectionString),
   });
   await client.connect();
 
