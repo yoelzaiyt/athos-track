@@ -16,6 +16,7 @@ import type { Server as SocketIOServer, Socket } from 'socket.io';
 import { Client } from 'pg';
 import { pool } from './db';
 import { resolveAuth, AuthError } from './auth';
+import { sslFor } from './../db/connectionSsl';
 
 function tenantRoom(clientId: string) {
   return `client:${clientId}`;
@@ -77,7 +78,7 @@ export async function startRealtimeBridge(io: SocketIOServer) {
   }
   const listener = new Client({
     connectionString,
-    ssl: connectionString.includes('railway') || connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    ssl: sslFor(connectionString),
   });
 
   await listener.connect();

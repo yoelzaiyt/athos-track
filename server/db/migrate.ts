@@ -43,6 +43,7 @@ import {
   type LedgerRecord,
   type SqlFile,
 } from './migrationLedger.ts';
+import { sslFor } from './connectionSsl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(__dirname, '..', '..');
@@ -118,11 +119,43 @@ function collectSqlFiles(): SqlFile[] {
   return files.map((f) => ({ ...f, checksum: sha256(f.sql) }));
 }
 
+// A migration 20260828030000 (RLS real) cria a role athos_app_rw com o
+// placeholder __ATHOS_APP_RW_PASSWORD__. O comentário dela sempre prometeu
+// que o valor viria de ATHOS_APP_RW_PASSWORD "em tempo de aplicação", mas a
+// substituição nunca existiu em lugar nenhum do repo: rodando como estava, a
+// role que tem select/insert/update/delete em TODAS as tabelas nasceria com
+// uma senha literal versionada em Git. Substituído aqui, na hora de executar
+// — nunca no checksum, pra que o hash do ledger dependa do arquivo e não da
+// senha do ambiente.
+const PASSWORD_PLACEHOLDER = '__ATHOS_APP_RW_PASSWORD__';
+
+function resolvePlaceholders(label: string, sql: string): string {
+  if (!sql.includes(PASSWORD_PLACEHOLDER)) return sql;
+
+  const password = process.env.ATHOS_APP_RW_PASSWORD;
+  if (!password) {
+    throw new Error(
+      `${label} cria a role athos_app_rw e exige ATHOS_APP_RW_PASSWORD no ambiente.
+` +
+        'Defina uma senha forte (a MESMA que vai em APP_DATABASE_URL) e rode de novo.'
+    );
+  }
+  if (password.length < 16) {
+    throw new Error('ATHOS_APP_RW_PASSWORD precisa ter pelo menos 16 caracteres.');
+  }
+  if (password.includes("'") || password.includes('\\')) {
+    throw new Error(
+      "ATHOS_APP_RW_PASSWORD não pode conter aspa simples nem barra invertida — " +
+        'o valor vai dentro de um literal SQL na migration.'
+    );
+  }
+  return sql.split(PASSWORD_PLACEHOLDER).join(password);
+}
+
 function newClient(): Client {
   return new Client({
     connectionString: databaseUrl,
-    ssl:
-      databaseUrl!.includes('railway') || databaseUrl!.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    ssl: sslFor(databaseUrl!),
   });
 }
 
@@ -265,7 +298,7 @@ async function runApply(client: Client, files: SqlFile[]): Promise<void> {
     // nada fica aplicado pela metade e o ledger não mente sobre o que rodou.
     try {
       await client.query('begin');
-      await client.query(sql);
+      await client.query(resolvePlaceholders(label, sql));
       await client.query(`insert into ${LEDGER_TABLE} (label, checksum) values ($1, $2)`, [label, checksum]);
       await client.query('commit');
       console.log('OK');
