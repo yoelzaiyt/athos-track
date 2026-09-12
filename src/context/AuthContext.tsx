@@ -3,6 +3,15 @@ import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '..
 import { supabase, type Session } from '../lib/supabaseClient';
 import { rowToClient, rowToUnit } from '../lib/mappers';
 
+export type LoginFailureReason =
+  | 'invalid_credentials' // 401 — e-mail ou senha errados (o caso normal)
+  | 'inactive' // 401 — conta desativada por um admin (SEC-009)
+  | 'rate_limited' // 429 — rate limit de login por IP/e-mail (SEC-007)
+  | 'server_error' // 5xx — o servidor quebrou; NÃO é problema de senha
+  | 'unreachable'; // a requisição não saiu: API fora do ar, rede, CORS
+
+export type LoginResult = { ok: true } | { ok: false; reason: LoginFailureReason; detail: string };
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isAuthLoading: boolean;
@@ -15,7 +24,7 @@ interface AuthContextType {
   refreshClients: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
-  login: (email: string, pass: string) => Promise<boolean>;
+  login: (email: string, pass: string) => Promise<LoginResult>;
   logout: () => void;
   setRole: (role: UserRole) => void;
   setSelectedClientId: (id: string) => void;
@@ -159,14 +168,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setThemeState(mode);
   };
 
-  const login = async (email: string, pass: string): Promise<boolean> => {
+  // Devolve o motivo da falha, não só um booleano. Um booleano obrigava a tela
+  // a chamar tudo de "credenciais inválidas" — inclusive um 500 causado por
+  // erro de SQL (ex.: coluna faltando por migração atrasada no banco), que é o
+  // oposto do diagnóstico certo e já custou horas de investigação.
+  const login = async (email: string, pass: string): Promise<LoginResult> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) {
-      console.error('[AuthContext] login failed:', error.message);
-      return false;
+    if (!error) {
+      // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
+      return { ok: true };
     }
-    // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
-    return true;
+
+    console.error('[AuthContext] login failed:', error.status, error.message);
+
+    if (error.status === 0) return { ok: false, reason: 'unreachable', detail: error.message };
+    if (error.status === 401) {
+      // O backend distingue conta desativada (SEC-009) de credencial errada.
+      return /inactive/i.test(error.message)
+        ? { ok: false, reason: 'inactive', detail: error.message }
+        : { ok: false, reason: 'invalid_credentials', detail: error.message };
+    }
+    if (error.status === 429) return { ok: false, reason: 'rate_limited', detail: error.message };
+    return { ok: false, reason: 'server_error', detail: error.message };
   };
 
   const logout = () => {

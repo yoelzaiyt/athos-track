@@ -91,7 +91,12 @@ function setSession(token: string | null, user: AuthUser | null) {
 
 interface ApiResult<T> {
   data: T | null;
-  error: { message: string } | null;
+  // `status` é o HTTP status real da resposta (0 = a requisição nem saiu:
+  // API fora do ar, DNS, CORS, offline). Sem ele, quem chama não consegue
+  // distinguir "senha errada" (401) de "o servidor quebrou" (500) — foi
+  // exatamente isso que fez um erro de SQL no login aparecer como
+  // "Credenciais inválidas" na tela por horas (ver src/pages/Login.tsx).
+  error: { message: string; status: number } | null;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
@@ -106,14 +111,14 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<Api
       },
     });
   } catch (err) {
-    return { data: null, error: { message: (err as Error).message } };
+    return { data: null, error: { message: (err as Error).message, status: 0 } };
   }
 
   if (res.status === 204) return { data: null, error: null };
 
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    return { data: null, error: { message: body?.error || res.statusText } };
+    return { data: null, error: { message: body?.error || res.statusText, status: res.status } };
   }
   return { data: body as T, error: null };
 }
@@ -273,7 +278,7 @@ export const supabase = {
         body: JSON.stringify({ email, password }),
       });
       if (result.error || !result.data) {
-        return { data: { session: null }, error: result.error || { message: 'Login failed' } };
+        return { data: { session: null }, error: result.error || { message: 'Login failed', status: 0 } };
       }
       setSession(result.data.token, result.data.user);
       const session = currentSession();
