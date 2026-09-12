@@ -6,9 +6,16 @@ import { defineConfig } from 'vitest/config';
 // rodam com DATABASE_URL/DIRECT_URL apontando pra um banco descartável já
 // migrado — ver .github/workflows/ci.yml, job `test-db`.
 //
-//   npm run test:unit  → sem banco, roda em qualquer máquina
-//   npm run test:db    → precisa de Postgres migrado
-//   npm test           → os dois (comportamento anterior, inalterado)
+//   npm test           → só os unitários (padrão seguro, sem banco)
+//   npm run test:unit  → idem
+//   npm run test:db    → precisa de Postgres migrado E DESCARTÁVEL
+//   npm run test:all   → os dois
+//
+// `npm test` deliberadamente NÃO inclui o grupo `db`: esses testes gravam e
+// apagam linhas (tenants RBACTEST-*/CONCTEST-*) no banco que DATABASE_URL
+// apontar, sem pedir confirmação. Com um .env apontando pra produção, um
+// `npm test` distraído escreveria em produção. Rodar contra banco real agora
+// exige dizer isso explicitamente (test:db/test:all).
 const DB_TESTS = [
   'server/api/rbac.test.ts',
   'server/api/realtime.test.ts',
