@@ -21,6 +21,7 @@
 import { Router } from 'express';
 import { pool } from './db';
 import { requireAuth, type AuthTokenPayload } from './auth';
+import { apiRateLimit } from './rateLimit';
 
 const ADMIN_ROLE = 'ATHOS_ADMIN';
 const MAX_HOURS = 24;
@@ -146,6 +147,17 @@ statsRouter.get('/events', async (req, res) => {
     if (status >= 500) console.error('[stats/events] error:', (err as Error).message);
     res.status(status).json({ error: (err as Error).message });
   }
+});
+
+// GET /stats/rate-limit: quantas vezes o rate limit de /rest e /providers
+// disparou desde que o processo subiu (card #38). Só ATHOS_ADMIN: expõe
+// client_id de todos os tenants.
+statsRouter.get('/rate-limit', (req, res) => {
+  if (!isAdmin(req.auth!)) {
+    res.status(403).json({ error: `Only ${ADMIN_ROLE} can read rate limit stats` });
+    return;
+  }
+  res.json(apiRateLimit.stats());
 });
 
 statsRouter.get('/status-basis', async (req, res) => {
