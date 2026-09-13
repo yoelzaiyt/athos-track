@@ -1,73 +1,18 @@
 import React, { useState } from 'react';
 import { Users, Plus, ShieldCheck, Pencil, Trash2 } from 'lucide-react';
-import { DataTable, Column } from '../../components/common/DataTable';
+import { DataTable } from '../../components/common/DataTable';
 import { UserFormModal } from '../../components/common/UserFormModal';
 import { useAssets } from '../../context/AssetContext';
 import { useAuth } from '../../context/AuthContext';
 import { UserProfile } from '../../types';
+import { userColumns } from '../columns/userColumns';
 
 export const UsersPage: React.FC = () => {
   const { users, addUserProfile, updateUserProfile, deleteUserProfile } = useAssets();
   const { user: currentUser } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-
-  const columns: Column<UserProfile>[] = [
-    {
-      header: 'Usuário',
-      accessor: (row) => (
-        <div className="flex items-center gap-2.5">
-          {row.avatarUrl ? (
-            <img src={row.avatarUrl} alt={row.name} className="w-8 h-8 rounded-full object-cover" />
-          ) : (
-            <div className="w-8 h-8 bg-cyan-600/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 rounded-full flex items-center justify-center font-bold text-xs">
-              {row.name.substring(0, 2).toUpperCase()}
-            </div>
-          )}
-          <div>
-            <div className="font-bold text-slate-900 dark:text-slate-100">{row.name}</div>
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{row.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      header: 'Papel RBAC',
-      accessor: (row) => (
-        <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 rounded-lg uppercase">
-          {row.role.replace('_', ' ')}
-        </span>
-      ),
-    },
-    {
-      header: 'Permissões do Papel',
-      accessor: (row) => (
-        <span className="text-xs text-slate-600 dark:text-slate-300">
-          {row.role === 'ATHOS_ADMIN'
-            ? 'Acesso Global Total'
-            : row.role === 'FLEET_MANAGER'
-            ? 'Frotas + Cargas + Mapas'
-            : row.role === 'CART_MANAGER'
-            ? 'Carrinhos + Tags + Mapas'
-            : row.role === 'ASSET_MANAGER'
-            ? 'Ativos + Tags + Mapas'
-            : row.role === 'CLIENT_ADMIN'
-            ? 'Administração do Cliente'
-            : row.role === 'OPERATOR'
-            ? 'Operação do Dia a Dia'
-            : 'Somente Visualização'}
-        </span>
-      ),
-    },
-    {
-      header: 'Escopo',
-      accessor: (row) => (
-        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-          {row.clientId ? (row.unitId ? 'Cliente + Unidade' : 'Cliente') : 'Todos os clientes'}
-        </span>
-      ),
-    },
-  ];
+  const columns = userColumns;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">

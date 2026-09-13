@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
 import { Search, Download } from 'lucide-react';
+import { buildCsvContent, buildCsvFilename, downloadCsv } from '../../lib/csvExport';
 
 export interface Column<T> {
   header: string;
   accessor: keyof T | ((row: T) => React.ReactNode);
   className?: string;
+  /** Valor bruto desta coluna no CSV. Use quando o que aparece na tela não
+   *  serve como dado (ícone, badge sem texto, componente próprio) ou quando o
+   *  CSV deve levar um formato diferente do visual — data ISO em vez de
+   *  "há 5 min", número puro em vez de "85%". Tem precedência sobre o
+   *  `accessor`. Sem ele, o CSV usa o texto do que a coluna renderiza. */
+  exportAccessor?: (row: T) => string | number | boolean | null | undefined;
+  /** `false` deixa a coluna de fora do CSV — pra coluna puramente visual
+   *  (miniatura, semáforo, barra de progresso) sem valor textual. */
+  exportable?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -38,27 +48,14 @@ export function DataTable<T extends Record<string, any>>({
     });
   });
 
+  // O CSV exporta o que está NA TELA: as linhas já filtradas pela busca, na
+  // mesma ordem e com as mesmas colunas. Por isso o guard olha `filtered`, e
+  // não `data` — antes, filtrar até zerar o resultado e clicar em CSV gerava
+  // um arquivo só com cabeçalho. A montagem em si vive em src/lib/csvExport.ts
+  // (escape, BOM, injeção de fórmula, valor por coluna), coberta por testes.
   const handleExportCSV = () => {
-    if (!data.length) return;
-    const headers = columns.map((c) => c.header).join(',');
-    const rows = filtered.map((row) =>
-      columns
-        ? columns
-            .map((c) => {
-              const val = typeof c.accessor === 'function' ? '' : row[c.accessor];
-              return `"${String(val ?? '').replace(/"/g, '""')}"`;
-            })
-            .join(',')
-        : ''
-    );
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${title || 'export'}_athos_track.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (!filtered.length) return;
+    downloadCsv(buildCsvFilename(title), buildCsvContent(columns, filtered));
   };
 
   return (
@@ -89,7 +86,9 @@ export function DataTable<T extends Record<string, any>>({
           {exportable && (
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700/50"
+              disabled={!filtered.length}
+              title={filtered.length ? `Exportar ${filtered.length} registro(s) em CSV` : 'Nada para exportar com o filtro atual'}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 rounded-lg text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700/50"
             >
               <Download className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
               <span>CSV</span>
