@@ -271,6 +271,47 @@ export const supabase = {
       };
     },
 
+    // SEC-010 fase 2 — recuperação de senha real (server/api/routes-auth.ts).
+    // Os três métodos abaixo são chamados SEM sessão (tela de login e tela
+    // pública de redefinição), então nunca mandam Authorization — apiFetch só
+    // anexa o header quando há token, e aqui não há.
+
+    /** Pede o e-mail com o link de redefinição. Resposta 202 é sempre
+     *  genérica de propósito (não revela se a conta existe); 503/502 são
+     *  falhas reais de configuração/envio e têm mensagem própria. */
+    async requestPasswordReset(email: string) {
+      const result = await apiFetch<{ message: string }>('/auth/password-reset/request', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      return { message: result.data?.message ?? null, error: result.error };
+    },
+
+    /** Checa o link ANTES de o usuário digitar a senha nova — evita a
+     *  frustração de preencher tudo e só então descobrir que expirou. */
+    async validatePasswordResetToken(token: string) {
+      const result = await apiFetch<{ valid: boolean; email: string; expiresAt: string }>(
+        '/auth/password-reset/validate',
+        { method: 'POST', body: JSON.stringify({ token }) }
+      );
+      return { data: result.data, error: result.error };
+    },
+
+    /** Troca a senha. Em caso de sucesso o servidor já revogou TODA sessão
+     *  anterior desta conta (session_version++), inclusive a deste navegador,
+     *  se houver — por isso limpamos o token local aqui também. */
+    async confirmPasswordReset(token: string, password: string) {
+      const result = await apiFetch<null>('/auth/password-reset/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ token, password }),
+      });
+      if (!result.error) {
+        setSession(null, null);
+        authListeners.forEach((l) => l('SIGNED_OUT', null));
+      }
+      return { error: result.error };
+    },
+
     async signOut() {
       // SEC-008: revoga a sessão no servidor (session_version++), não só
       // limpa o token localmente — best-effort, não bloqueia o logout local

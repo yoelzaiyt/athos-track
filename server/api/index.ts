@@ -12,6 +12,8 @@ import { restRouter } from './rest';
 import { providersRouter } from './routes-providers';
 import { startRealtimeBridge } from './realtime';
 import { pool, closeDbPools } from './db';
+import { getMailProvider, isMailConfigured } from '../mail';
+import { resolveAppPublicUrl } from './passwordReset';
 import { ProviderRegistry } from '../integrations/shared/ProviderRegistry';
 import { BrgpsProvider } from '../integrations/brgps/BrgpsProvider';
 
@@ -59,6 +61,20 @@ if (process.env.BRGPS2_ENABLED === 'true' && process.env.BRGPS2_BASE_URL && proc
   ProviderRegistry.register(brgps2Provider);
 } else {
   console.warn('[api] Provider BRGPS_2 não registrado — BRGPS2_ENABLED/BASE_URL/TOKEN ausentes no .env.');
+}
+
+// SEC-010 fase 2: dizer no boot se a recuperação de senha está de fato
+// operante neste ambiente. Sem isso, a descoberta de que o SMTP não está
+// configurado só acontece quando alguém já esqueceu a senha e não recebe
+// e-mail nenhum.
+if (isMailConfigured() && resolveAppPublicUrl()) {
+  console.log(`[api] Recuperação de senha ATIVA — e-mail via ${getMailProvider()!.id}, links apontando para ${resolveAppPublicUrl()}.`);
+} else {
+  console.warn(
+    '[api] Recuperação de senha INATIVA — ' +
+      (!isMailConfigured() ? 'SMTP não configurado (SMTP_HOST/MAIL_FROM).' : 'sem URL pública (APP_PUBLIC_URL/CORS_ORIGIN).') +
+      ' POST /auth/password-reset/request vai responder 503 até isso ser resolvido.'
+  );
 }
 
 const app = express();
