@@ -68,9 +68,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, o
           {!editingUser && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl leading-snug">
               Este cadastro cria o <strong>perfil e as permissões</strong> do usuário na plataforma. Para liberar o
-              login, rode no servidor:{' '}
+              login, rode no servidor e digite a senha quando for pedida:{' '}
               <code className="font-mono bg-amber-500/10 px-1 rounded">
-                npm run user:set-password -- {'<email>'} {'<senha>'}
+                npm run user:set-password -- {'<email>'}
               </code>
             </div>
           )}
