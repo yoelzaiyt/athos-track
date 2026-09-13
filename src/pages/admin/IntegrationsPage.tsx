@@ -3,6 +3,7 @@ import { Globe, Radio, Server, Wifi, Key, CheckCircle2, Shield, Code2, Plus, X, 
 import { useAssets } from '../../context/AssetContext';
 import { SystemIntegration, AssetDevice } from '../../types';
 import { apiFetch } from '../../lib/apiClient';
+import { useAuth } from '../../context/AuthContext';
 
 // Conta dispositivos conectados de verdade a partir dos ativos reais, em vez
 // de um contador manual que nunca era atualizado. Se a integração declara um
@@ -19,6 +20,8 @@ interface ApiKeyRow {
   id: string;
   name: string;
   key_prefix: string;
+  client_id: string | null;
+  client_name: string | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
@@ -178,19 +181,24 @@ const IntegrationFormModal: React.FC<{ onClose: () => void; editing?: SystemInte
 };
 
 const NewApiKeyModal: React.FC<{ onClose: () => void; onCreated: (key: string) => void }> = ({ onClose, onCreated }) => {
+  const { user, availableClients } = useAuth();
+  // Toda chave pertence a uma empresa. CLIENT_ADMIN usa a própria (o servidor
+  // impõe); ATHOS_ADMIN precisa escolher.
+  const isAthosAdmin = user?.role === 'ATHOS_ADMIN';
   const [name, setName] = useState('');
+  const [clientId, setClientId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || (isAthosAdmin && !clientId)) return;
     setSaving(true);
     setError(null);
     try {
       const { data, error } = await apiFetch<{ apiKey: string }>('/api-keys', {
         method: 'POST',
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name: name.trim(), ...(isAthosAdmin ? { clientId } : {}) }),
       });
       if (error || !data) {
         setError(error?.message ?? 'Falha ao gerar a chave.');
@@ -226,6 +234,26 @@ const NewApiKeyModal: React.FC<{ onClose: () => void; onCreated: (key: string) =
           />
         </div>
 
+        {isAthosAdmin && (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Empresa</label>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/40"
+            >
+              <option value="">Selecione a empresa dona da chave</option>
+              {availableClients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">A chave só enxerga os dados desta empresa.</p>
+          </div>
+        )}
+
         {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
@@ -238,7 +266,7 @@ const NewApiKeyModal: React.FC<{ onClose: () => void; onCreated: (key: string) =
           </button>
           <button
             type="submit"
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || (isAthosAdmin && !clientId)}
             className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
           >
             {saving ? 'Gerando...' : 'Gerar Chave'}
@@ -290,13 +318,17 @@ const RevealApiKeyModal: React.FC<{ apiKey: string; onClose: () => void }> = ({ 
 const ApiKeysSection: React.FC = () => {
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showNewKey, setShowNewKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
   const loadKeys = async () => {
     setLoading(true);
-    const { data } = await apiFetch<ApiKeyRow[]>('/api-keys');
+    const { data, error } = await apiFetch<ApiKeyRow[]>('/api-keys');
     setKeys(data ?? []);
+    // 403 para quem não é ATHOS_ADMIN/CLIENT_ADMIN: mostrar o motivo em vez
+    // de "nenhuma chave".
+    setLoadError(error ? 'Somente administradores da empresa podem gerenciar chaves de API.' : null);
     setLoading(false);
   };
 
@@ -327,6 +359,8 @@ const ApiKeysSection: React.FC = () => {
 
       {loading ? (
         <p className="text-xs text-slate-500 dark:text-slate-400">Carregando...</p>
+      ) : loadError ? (
+        <p className="text-xs text-rose-600 dark:text-rose-400">{loadError}</p>
       ) : keys.length === 0 ? (
         <p className="text-xs text-slate-500 dark:text-slate-400">Nenhuma chave de API gerada ainda.</p>
       ) : (
@@ -339,6 +373,9 @@ const ApiKeysSection: React.FC = () => {
               <div className="min-w-0">
                 <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{k.name}</div>
                 <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">{k.key_prefix}…</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {k.client_name ?? 'Sem empresa (chave antiga — não funciona em /v1)'}
+                </div>
               </div>
               {k.revoked_at ? (
                 <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 shrink-0">REVOGADA</span>

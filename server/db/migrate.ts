@@ -10,6 +10,7 @@
 //   4. server/db/02_realtime_notify.sql   — triggers de LISTEN/NOTIFY
 //   5. server/db/03_api_keys.sql          — tabela de chaves de API
 //   6. server/db/04_integration_provider.sql — system_integrations.provider
+//   7. server/db/05_api_keys_tenant.sql    — api_keys.client_id/created_by
 //
 // LEDGER: o que já foi aplicado fica registrado em `athos_schema_migrations`,
 // e cada arquivo roda UMA vez só. Isso existe porque as migrations históricas
@@ -114,6 +115,10 @@ function collectSqlFiles(): SqlFile[] {
   files.push({
     label: '04_integration_provider.sql',
     sql: readFileSync(path.join(__dirname, '04_integration_provider.sql'), 'utf-8'),
+  });
+  files.push({
+    label: '05_api_keys_tenant.sql',
+    sql: readFileSync(path.join(__dirname, '05_api_keys_tenant.sql'), 'utf-8'),
   });
 
   return files.map((f) => ({ ...f, checksum: sha256(f.sql) }));

@@ -61,7 +61,7 @@ O overlay de labels do modo HYBRID usava CARTO `voyager_only_labels`. A CARTO
 passou a estampar "API KEY REQUIRED" nos tiles anônimos, então o commit `0b41967`
 trocou por Esri `World_Boundaries_and_Places`, que é keyless e do mesmo provedor
 da imagem de satélite. **Não há mais nenhuma referência a `cartocdn` no código** —
-a origem continua na allow-list da CSP em `vercel.json`, hoje sem uso.
+e a origem saiu da allow-list da CSP em `vercel.json` (card #54).
 
 ## 3. Realtime
 
@@ -159,7 +159,7 @@ CN exigir labels EN em basemap raster ou se zoom >19 virar requisito.
 
 - Todas as origens de tile são HTTPS, keyless, sem secret client-side.
 - CSP em `vercel.json` + security headers na API (`server/api/index.ts`). Allow-list
-  cobre `tile.openstreetmap.org`, `server.arcgisonline.com`, `basemaps.cartocdn.com`,
+  cobre `tile.openstreetmap.org`, `server.arcgisonline.com` e
   `tile.opentopomap.org` (com e sem subdomínios `{s}`) em `img-src` e `connect-src`,
   mais o host da API Railway em `connect-src`.
 - V2 não renderiza HTML dinâmico no mapa (sem `bindPopup`/`innerHTML`/

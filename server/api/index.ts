@@ -12,6 +12,7 @@ import { restRouter } from './rest';
 import { providersRouter } from './routes-providers';
 import { apiKeysRouter } from './apiKeys';
 import { statsRouter } from './routes-stats';
+import { v1Router } from './routes-v1';
 import { startRealtimeBridge } from './realtime';
 import { pool, closeDbPools } from './db';
 import { ProviderRegistry } from '../integrations/shared/ProviderRegistry';
@@ -91,6 +92,7 @@ app.use('/rest', restRouter);
 app.use('/providers', providersRouter);
 app.use('/stats', statsRouter);
 app.use('/api-keys', apiKeysRouter);
+app.use('/v1', v1Router);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: CORS_ORIGIN } });

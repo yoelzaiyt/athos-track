@@ -7,9 +7,11 @@ import { Router } from 'express';
 import { requireAuth } from './auth';
 import { ProviderRegistry } from '../integrations/shared/ProviderRegistry';
 import { writeAuditLog } from './audit';
+import { apiRateLimit } from './rateLimit';
 
 export const providersRouter = Router();
 providersRouter.use(requireAuth);
+providersRouter.use(...apiRateLimit.middleware);
 
 const ADMIN_ROLE = 'ATHOS_ADMIN';
 

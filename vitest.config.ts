@@ -20,6 +20,7 @@ const DB_TESTS = [
   'server/api/rbac.test.ts',
   'server/api/realtime.test.ts',
   'server/api/tag-classification.test.ts',
+  'server/api/apiKeys.test.ts',
   'server/integrations/brgps/db.concurrency.test.ts',
 ];
 
