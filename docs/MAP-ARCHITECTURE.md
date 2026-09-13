@@ -61,7 +61,7 @@ O overlay de labels do modo HYBRID usava CARTO `voyager_only_labels`. A CARTO
 passou a estampar "API KEY REQUIRED" nos tiles anônimos, então o commit `0b41967`
 trocou por Esri `World_Boundaries_and_Places`, que é keyless e do mesmo provedor
 da imagem de satélite. **Não há mais nenhuma referência a `cartocdn` no código** —
-a origem continua na allow-list da CSP em `vercel.json`, hoje sem uso.
+e a origem saiu da allow-list da CSP em `vercel.json` (card #54).
 
 ## 3. Realtime
 
