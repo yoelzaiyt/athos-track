@@ -159,7 +159,7 @@ CN exigir labels EN em basemap raster ou se zoom >19 virar requisito.
 
 - Todas as origens de tile são HTTPS, keyless, sem secret client-side.
 - CSP em `vercel.json` + security headers na API (`server/api/index.ts`). Allow-list
-  cobre `tile.openstreetmap.org`, `server.arcgisonline.com`, `basemaps.cartocdn.com`,
+  cobre `tile.openstreetmap.org`, `server.arcgisonline.com` e
   `tile.opentopomap.org` (com e sem subdomínios `{s}`) em `img-src` e `connect-src`,
   mais o host da API Railway em `connect-src`.
 - V2 não renderiza HTML dinâmico no mapa (sem `bindPopup`/`innerHTML`/
