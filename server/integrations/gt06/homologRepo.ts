@@ -5,6 +5,7 @@
 // Usado só quando GT06_HOMOLOG_MODE=true, ver server/gt06-listener/index.ts.
 
 import { Client } from 'pg';
+import { sslFor } from '../../db/connectionSsl';
 
 export interface HomologDeviceRow {
   id: string;
@@ -46,7 +47,7 @@ export class Gt06HomologRepository {
   private client: Client;
 
   constructor(connectionString: string) {
-    this.client = new Client({ connectionString, ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined });
+    this.client = new Client({ connectionString, ssl: sslFor(connectionString) });
   }
 
   async connect(): Promise<void> {

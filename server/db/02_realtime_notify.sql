@@ -34,3 +34,11 @@ drop trigger if exists system_alerts_notify_insert on system_alerts;
 create trigger system_alerts_notify_insert
   after insert on system_alerts
   for each row execute function notify_table_change();
+
+-- FASE 3 (refino operacional): reconhecimento de alerta (acknowledged) feito
+-- por um usuário precisa chegar nos outros sem F5 — o UPDATE da linha tem que
+-- propagar pelo mesmo canal. Antes só INSERT era notificado.
+drop trigger if exists system_alerts_notify_update on system_alerts;
+create trigger system_alerts_notify_update
+  after update on system_alerts
+  for each row execute function notify_table_change();

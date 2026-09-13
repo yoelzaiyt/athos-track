@@ -3,17 +3,26 @@
 // provision-user-auth.ts (que dependia do GoTrue/auth.users do Supabase e só
 // se aplica enquanto o projeto ainda estiver rodando sobre o Supabase).
 //
-// Uso: DATABASE_URL=postgresql://... npx tsx scripts/provision-user-password.ts <email> <senha>
-// (ou rode com o .env local carregado — ele lê DATABASE_URL de lá se a env var não estiver setada)
+// Uso: DATABASE_URL=postgresql://... npm run user:set-password -- <email>
+//
+// A senha é PEDIDA NA TELA, sem eco, e digitada duas vezes. Não é mais aceita
+// como argumento (card #26 do Trello): senha na linha de comando fica no
+// histórico do shell, na lista de processos e no transcript de qualquer
+// ferramenta que rode o comando — foi assim que senhas de produção vazaram em
+// 11/09/2026. Sem terminal interativo (CI, pipe), a senha é lida da primeira
+// linha do stdin: `printf '%s\n' "$SENHA" | npm run user:set-password -- <email>`.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import readline from 'node:readline';
 import bcrypt from 'bcryptjs';
 import { Client } from 'pg';
+import { sslFor } from '../server/db/connectionSsl';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(__dirname, '..');
+const MIN_LENGTH = 6;
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -35,29 +44,74 @@ if (!process.env.DATABASE_URL) {
   }
 }
 
-const [, , email, password] = process.argv;
-
-if (!email || !password) {
-  console.error('Uso: npx tsx scripts/provision-user-password.ts <email> <senha>');
-  process.exitCode = 1;
-} else if (password.length < 6) {
-  console.error('A senha precisa ter pelo menos 6 caracteres.');
-  process.exitCode = 1;
-} else if (!process.env.DATABASE_URL) {
-  console.error('Defina DATABASE_URL (connection string do Postgres).');
-  process.exitCode = 1;
-} else {
-  main(email, password).catch((err) => {
-    console.error('FALHOU:', err.message);
-    process.exitCode = 1;
+// Lê uma linha sem ecoar o que é digitado (terminal) ou a primeira linha do
+// stdin (sem terminal).
+function askHidden(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: process.stdin.isTTY });
+    if (process.stdin.isTTY) {
+      process.stdout.write(question);
+      // Silencia o eco: o readline chama _writeToOutput para cada tecla.
+      (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = () => {};
+    }
+    rl.question(process.stdin.isTTY ? '' : question, (answer) => {
+      if (process.stdin.isTTY) process.stdout.write('\n');
+      rl.close();
+      resolve(answer);
+    });
   });
 }
 
-async function main(email: string, password: string) {
-  const connectionString = process.env.DATABASE_URL!;
+async function readPassword(): Promise<string | null> {
+  const password = await askHidden('Nova senha: ');
+  if (process.stdin.isTTY) {
+    const confirmation = await askHidden('Repita a senha: ');
+    if (password !== confirmation) {
+      console.error('As senhas não conferem. Nada foi alterado.');
+      return null;
+    }
+  }
+  return password;
+}
+
+async function main() {
+  const [, , email, extra] = process.argv;
+
+  if (extra !== undefined) {
+    console.error(
+      'A senha não é mais aceita como argumento: ela ficaria no histórico do shell.\n' +
+        'Rode só com o e-mail e digite a senha quando for pedida:\n' +
+        '  npm run user:set-password -- <email>'
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (!email) {
+    console.error('Uso: npm run user:set-password -- <email>');
+    process.exitCode = 1;
+    return;
+  }
+  if (!process.env.DATABASE_URL) {
+    console.error('Defina DATABASE_URL (connection string do Postgres).');
+    process.exitCode = 1;
+    return;
+  }
+
+  const password = await readPassword();
+  if (password === null) {
+    process.exitCode = 1;
+    return;
+  }
+  if (password.length < MIN_LENGTH) {
+    console.error(`A senha precisa ter pelo menos ${MIN_LENGTH} caracteres. Nada foi alterado.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const connectionString = process.env.DATABASE_URL;
   const client = new Client({
     connectionString,
-    ssl: connectionString.includes('railway') || connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    ssl: sslFor(connectionString),
   });
   await client.connect();
 
@@ -85,3 +139,8 @@ async function main(email: string, password: string) {
     await client.end();
   }
 }
+
+main().catch((err) => {
+  console.error('FALHOU:', err.message);
+  process.exitCode = 1;
+});

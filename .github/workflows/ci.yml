@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# Um PR que recebe vários pushes seguidos cancela as execuções antigas em vez
+# de enfileirar build em cima de build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Lint + build + os testes que não precisam de banco. Roda em qualquer
+  # máquina, sem nenhum secret.
+  check:
+    name: Lint, build e testes unitários
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run lint
+
+      - name: Testes unitários
+        run: npm run test:unit
+
+      - name: Build de produção
+        run: npm run build
+
+      - name: Publicar o dist como artefato
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+          retention-days: 7
+
+  # Os 5 arquivos de teste de integração real: sobem a API numa porta efêmera,
+  # fazem login de verdade e gravam no Postgres. Aqui o banco é um container
+  # descartável, migrado do zero pelo próprio repo — nunca o banco do Railway.
+  test-db:
+    name: Testes de integração (Postgres real)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: athos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Mesmo banco nas duas variáveis: sem PgBouncer no CI, a conexão já é
+      # direta. Em produção elas são diferentes de propósito — LISTEN/NOTIFY
+      # exige DIRECT_URL, ver docs/MAP-ARCHITECTURE.md §3.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/athos_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/athos_test
+      JWT_SECRET: ci-only-not-a-real-secret-${{ github.run_id }}
+      # A migration 20260828030000 cria a role athos_app_rw e, desde que
+      # server/db/migrate.ts passou a substituir o placeholder de senha,
+      # exige esta variável — senão a role nasceria com a senha literal que
+      # está versionada no .sql. Aqui o banco é efêmero e some com o job, mas
+      # o valor precisa existir e passar na validação (16+ caracteres).
+      ATHOS_APP_RW_PASSWORD: ci-only-athos-app-rw-${{ github.run_id }}
+      # Nenhuma chamada ao fornecedor a partir do CI.
+      BRGPS_ENABLED: 'false'
+      BRGPS2_ENABLED: 'false'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Aplicar o schema completo
+        run: npm run db:migrate
+
+      - name: Testes de integração
+        run: npm run test:db

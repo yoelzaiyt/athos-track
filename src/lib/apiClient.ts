@@ -1,7 +1,7 @@
 // Cliente HTTP fino que imita o subconjunto do supabase-js realmente usado
 // pelo app (.from(table).select().order().eq().single()/.maybeSingle(),
 // .insert(), .update(), .delete(), .channel(...).on('postgres_changes', ...),
-// supabase.auth.signInWithPassword/getSession/onAuthStateChange/signOut).
+// api.auth.signInWithPassword/getSession/onAuthStateChange/signOut).
 // Existe pra que a migração Supabase -> API própria (server/api) não exigisse
 // reescrever AssetContext.tsx/AuthContext.tsx/mappers.ts inteiros — eles
 // continuam chamando exatamente os mesmos métodos em cima de `supabase`.
@@ -35,12 +35,47 @@ let authToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
 let currentUser: AuthUser | null = null;
 const authListeners: AuthListener[] = [];
 
+// SEC-003: o servidor agora exige um JWT válido no handshake (ver
+// server/api/realtime.ts) — sem isso a conexão é recusada.
 let socket: Socket | null = null;
+
+// FASE 13: estado REALTIME_CONNECTED/RECONNECTING/OFFLINE exposto pro
+// frontend, baseado nos eventos reais do Socket.IO (sem arrastar dragão
+// domínio pra dentro do shim — o shim só emite o estado legível).
+export type RealtimeConnectionStatus = 'CONNECTED' | 'RECONNECTING' | 'OFFLINE';
+type RealtimeStatusListener = (status: RealtimeConnectionStatus) => void;
+const realtimeStatusListeners = new Set<RealtimeStatusListener>();
+let realtimeStatus: RealtimeConnectionStatus = 'OFFLINE';
+
+function setRealtimeStatus(next: RealtimeConnectionStatus) {
+  if (realtimeStatus === next) return;
+  realtimeStatus = next;
+  for (const l of realtimeStatusListeners) l(next);
+}
+
 function getSocket(): Socket {
-  // SEC-003: o servidor agora exige um JWT válido no handshake (ver
-  // server/api/realtime.ts) — sem isso a conexão é recusada.
-  if (!socket) socket = io(API_URL, { transports: ['websocket'], auth: { token: authToken } });
+  if (!socket) {
+    socket = io(API_URL, { transports: ['websocket'], auth: { token: authToken } });
+    socket.on('connect', () => setRealtimeStatus('CONNECTED'));
+    socket.on('disconnect', () => setRealtimeStatus('OFFLINE'));
+    socket.on('connect_error', () => setRealtimeStatus('RECONNECTING'));
+    socket.io.on('reconnect_attempt', () => setRealtimeStatus('RECONNECTING'));
+    socket.io.on('reconnect', () => setRealtimeStatus('CONNECTED'));
+  }
   return socket;
+}
+
+/** FASE 13: inscreve um listener no estado de conexão realtime.
+ *  Chama o listener imediatamente com o estado atual (status assimétrico).
+ *  Retorna unsubscribe. */
+export function subscribeRealtimeStatus(cb: RealtimeStatusListener): () => void {
+  realtimeStatusListeners.add(cb);
+  cb(realtimeStatus);
+  return () => { realtimeStatusListeners.delete(cb); };
+}
+
+export function getRealtimeConnectionStatus(): RealtimeConnectionStatus {
+  return realtimeStatus;
 }
 
 function currentSession(): Session | null {
@@ -56,10 +91,18 @@ function setSession(token: string | null, user: AuthUser | null) {
 
 interface ApiResult<T> {
   data: T | null;
-  error: { message: string } | null;
+  // `status` é o HTTP status real da resposta (0 = a requisição nem saiu:
+  // API fora do ar, DNS, CORS, offline). Sem ele, quem chama não consegue
+  // distinguir "senha errada" (401) de "o servidor quebrou" (500) — foi
+  // exatamente isso que fez um erro de SQL no login aparecer como
+  // "Credenciais inválidas" na tela por horas (ver src/pages/Login.tsx).
+  error: { message: string; status: number } | null;
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
+// Exportado porque a página de Integrações fala com /api-keys, que não é uma
+// tabela (não cabe no .from(...).select() deste shim) — precisa de fetch
+// autenticado cru contra a API.
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<ApiResult<T>> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -71,14 +114,14 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<Api
       },
     });
   } catch (err) {
-    return { data: null, error: { message: (err as Error).message } };
+    return { data: null, error: { message: (err as Error).message, status: 0 } };
   }
 
   if (res.status === 204) return { data: null, error: null };
 
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    return { data: null, error: { message: body?.error || res.statusText } };
+    return { data: null, error: { message: body?.error || res.statusText, status: res.status } };
   }
   return { data: body as T, error: null };
 }
@@ -223,7 +266,7 @@ function channel(_name: string) {
   return api;
 }
 
-export const supabase = {
+export const api = {
   from<T = any>(table: string) {
     return new QueryBuilder<T>(table);
   },
@@ -238,7 +281,7 @@ export const supabase = {
         body: JSON.stringify({ email, password }),
       });
       if (result.error || !result.data) {
-        return { data: { session: null }, error: result.error || { message: 'Login failed' } };
+        return { data: { session: null }, error: result.error || { message: 'Login failed', status: 0 } };
       }
       setSession(result.data.token, result.data.user);
       const session = currentSession();

@@ -1,7 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, ThemeMode, CompanyClient, CompanyUnit } from '../types';
-import { supabase, type Session } from '../lib/supabaseClient';
-import { rowToClient, rowToUnit } from '../lib/mappers';
+import { api, type Session } from '../lib/apiClient';
+import { rowToClient, rowToUnit, unitToInsertRow } from '../lib/mappers';
+
+export type LoginFailureReason =
+  | 'invalid_credentials' // 401 — e-mail ou senha errados (o caso normal)
+  | 'inactive' // 401 — conta desativada por um admin (SEC-009)
+  | 'rate_limited' // 429 — rate limit de login por IP/e-mail (SEC-007)
+  | 'server_error' // 5xx — o servidor quebrou; NÃO é problema de senha
+  | 'unreachable'; // a requisição não saiu: API fora do ar, rede, CORS
+
+export type LoginResult = { ok: true } | { ok: false; reason: LoginFailureReason; detail: string };
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -15,12 +24,13 @@ interface AuthContextType {
   refreshClients: () => Promise<void>;
   toggleTheme: () => void;
   setTheme: (theme: ThemeMode) => void;
-  login: (email: string, pass: string) => Promise<boolean>;
+  login: (email: string, pass: string) => Promise<LoginResult>;
   logout: () => void;
   setRole: (role: UserRole) => void;
   setSelectedClientId: (id: string) => void;
   setSelectedUnitId: (id: string) => void;
   canAccessModule: (moduleKey: string) => boolean;
+  addUnit: (unit: Omit<CompanyUnit, 'id'>) => Promise<CompanyUnit | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,7 +43,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // restrito, em vez de assumir permissão).
 async function resolveUserProfile(session: Session): Promise<UserProfile> {
   const authUser = session.user;
-  const { data: row, error } = await supabase
+  const { data: row, error } = await api
     .from('user_profiles')
     .select('*')
     .eq('email', authUser.email)
@@ -45,7 +55,7 @@ async function resolveUserProfile(session: Session): Promise<UserProfile> {
 
   if (row) {
     if (!row.auth_user_id) {
-      supabase.from('user_profiles').update({ auth_user_id: authUser.id }).eq('id', row.id);
+      api.from('user_profiles').update({ auth_user_id: authUser.id }).eq('id', row.id);
     }
     return {
       id: row.id,
@@ -110,13 +120,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    api.auth.getSession().then(({ data: { session } }) => {
       applySession(session).finally(() => {
         if (!cancelled) setIsAuthLoading(false);
       });
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = api.auth.onAuthStateChange((_event, session) => {
       applySession(session);
     });
 
@@ -131,8 +141,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // de Tenants (src/pages/admin/ClientsPage.tsx).
   const loadClientsAndUnits = async () => {
     const [clientsRes, unitsRes] = await Promise.all([
-      supabase.from('company_clients').select('*').order('name'),
-      supabase.from('company_units').select('*').order('name'),
+      api.from('company_clients').select('*').order('name'),
+      api.from('company_units').select('*').order('name'),
     ]);
     if (clientsRes.error) console.error('[AuthContext] Failed to load clients:', clientsRes.error.message);
     if (unitsRes.error) console.error('[AuthContext] Failed to load units:', unitsRes.error.message);
@@ -159,18 +169,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setThemeState(mode);
   };
 
-  const login = async (email: string, pass: string): Promise<boolean> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) {
-      console.error('[AuthContext] login failed:', error.message);
-      return false;
+  // Devolve o motivo da falha, não só um booleano. Um booleano obrigava a tela
+  // a chamar tudo de "credenciais inválidas" — inclusive um 500 causado por
+  // erro de SQL (ex.: coluna faltando por migração atrasada no banco), que é o
+  // oposto do diagnóstico certo e já custou horas de investigação.
+  const login = async (email: string, pass: string): Promise<LoginResult> => {
+    const { error } = await api.auth.signInWithPassword({ email, password: pass });
+    if (!error) {
+      // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
+      return { ok: true };
     }
-    // isAuthenticated/user são atualizados pelo listener onAuthStateChange acima.
-    return true;
+
+    console.error('[AuthContext] login failed:', error.status, error.message);
+
+    if (error.status === 0) return { ok: false, reason: 'unreachable', detail: error.message };
+    if (error.status === 401) {
+      // O backend distingue conta desativada (SEC-009) de credencial errada.
+      return /inactive/i.test(error.message)
+        ? { ok: false, reason: 'inactive', detail: error.message }
+        : { ok: false, reason: 'invalid_credentials', detail: error.message };
+    }
+    if (error.status === 429) return { ok: false, reason: 'rate_limited', detail: error.message };
+    return { ok: false, reason: 'server_error', detail: error.message };
   };
 
   const logout = () => {
-    supabase.auth.signOut();
+    api.auth.signOut();
+  };
+
+  // Cadastro real de unidade (src/pages/admin/UnitsPage.tsx, que antes só
+  // mostrava um alert() de sucesso sem gravar nada). Fica no contexto, e não
+  // na página, porque a lista de unidades vive aqui — inserir e devolver sem
+  // atualizar `units` deixaria a tela mentindo até o próximo refresh.
+  const addUnit = async (unit: Omit<CompanyUnit, 'id'>): Promise<CompanyUnit | null> => {
+    const { data, error } = await api.from('company_units').insert(unitToInsertRow(unit)).select().single();
+    if (error || !data) {
+      console.error('[AuthContext] addUnit failed:', error?.message);
+      return null;
+    }
+    const created = rowToUnit(data);
+    setUnits((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    return created;
   };
 
   // Preview local de papel (RBAC) para testar a UI sob outras permissões — não
@@ -275,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedClientId,
         setSelectedUnitId,
         canAccessModule,
+        addUnit,
       }}
     >
       {children}

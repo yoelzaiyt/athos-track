@@ -49,6 +49,7 @@ import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice, Driver, MaintenanceRecord, TripRecord, AssetPairing } from '../types';
+import { formatRelativeTimePtBr } from '../lib/format';
 import { AssetIcon } from '../components/common/AssetIconRegistry';
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -281,7 +282,7 @@ export const FleetModule: React.FC = () => {
     },
     {
       header: 'Último Ping',
-      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{row.telemetry.lastCommunication}</span>,
+      accessor: (row) => <span className="font-mono text-slate-500 dark:text-slate-400">{formatRelativeTimePtBr(row.telemetry.lastCommunication)}</span>,
     },
   ];
 

@@ -28,6 +28,7 @@ import { UsersPage } from './pages/admin/UsersPage';
 import { IntegrationsPage } from './pages/admin/IntegrationsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
 import { HomologationAdminPage } from './pages/admin/HomologationAdminPage';
+import { LatencyDiagnosticsPage } from './pages/admin/LatencyDiagnosticsPage';
 import { HomologationPortalPage } from './pages/public/HomologationPortalPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
@@ -84,6 +85,8 @@ const AuthenticatedShell: React.FC = () => {
         return <SettingsPage />;
       case 'homologacao_gt06':
         return <HomologationAdminPage />;
+      case 'diagnostico_latencia':
+        return <LatencyDiagnosticsPage />;
       default:
         return <Dashboard onNavigate={(m) => setCurrentModule(m)} />;
     }

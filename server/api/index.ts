@@ -10,6 +10,9 @@ import { Server as SocketIOServer } from 'socket.io';
 import { authRouter } from './routes-auth';
 import { restRouter } from './rest';
 import { providersRouter } from './routes-providers';
+import { apiKeysRouter } from './apiKeys';
+import { statsRouter } from './routes-stats';
+import { v1Router } from './routes-v1';
 import { startRealtimeBridge } from './realtime';
 import { pool, closeDbPools } from './db';
 import { getMailProvider, isMailConfigured } from '../mail';
@@ -85,6 +88,16 @@ app.set('trust proxy', 1);
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
+// Headers de segurança básicos na API (JSON/Socket.io). A CSP autoritativa
+// para o SPA fica no deploy do frontend (vercel.json); aqui vale defesa em
+// profundidade + X-Content-Type-Options etc. — ver docs de FASE 19 (CSP).
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 // HOMOLOGATION-READINESS-REPORT.md, Fase 1: healthcheck do Railway (e
 // qualquer monitor externo) — {status:'ok'} é o formato pedido nesta
 // rodada; {ok:true} mantido também porque é o que já existia (sem
@@ -93,6 +106,9 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ok: true }));
 app.use('/auth', authRouter);
 app.use('/rest', restRouter);
 app.use('/providers', providersRouter);
+app.use('/stats', statsRouter);
+app.use('/api-keys', apiKeysRouter);
+app.use('/v1', v1Router);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: CORS_ORIGIN } });

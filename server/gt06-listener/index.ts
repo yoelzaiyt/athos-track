@@ -166,7 +166,7 @@ async function insertEvent(
   );
 }
 
-async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socket, remote: string) {
+async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socket, remote: string, serverReceivedAt: Date) {
   if (!frame.crcValid) {
     console.warn(`[gt06-listener] CRC inválido de ${remote} (protocolo 0x${frame.protocol.toString(16)}) — pacote ignorado. raw=${frame.raw.toString('hex')}`);
     return;
@@ -275,6 +275,15 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       }
       session.locationOk = true;
 
+      if (loc) {
+        const deviceToServerMs = serverReceivedAt.getTime() - loc.timestamp.getTime();
+        console.log(
+          `[DEVICE_RX] imei=${session.imei ?? 'UNKNOWN'} mode=${session.mode} ` +
+          `packet_rx_at=${serverReceivedAt.toISOString()} device_ts=${loc.timestamp.toISOString()} ` +
+          `device_to_server_ms=${deviceToServerMs}`
+        );
+      }
+
       if (loc && HOMOLOG_MODE && homologRepo) {
         logGps({
           imei: session.imei ?? 'UNKNOWN',
@@ -291,7 +300,7 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       }
 
       if (loc && session.mode === 'production' && session.assetTarget) {
-        await applyLocationToAsset(session.assetTarget, loc);
+        await applyLocationToAsset(session.assetTarget, loc, undefined, serverReceivedAt);
       } else if (session.mode === 'homologation') {
         await insertEvent(session, {
           packetType: `GPS_LOCATION (0x${frame.protocol.toString(16)})`,
@@ -333,7 +342,7 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
       if (alarm?.location && session.mode === 'production' && session.assetTarget) {
         // Bit1 do Terminal Information (seção 5.3.1.14): 1 = ACC alta (ignição ligada).
         const ignition = (alarm.terminalInfo & 0x02) !== 0;
-        await applyLocationToAsset(session.assetTarget, alarm.location, ignition);
+        await applyLocationToAsset(session.assetTarget, alarm.location, ignition, serverReceivedAt);
         if (mapping?.alertType) {
           await gt06Repo.createAlert(session.assetTarget, {
             type: mapping.alertType,
@@ -384,7 +393,8 @@ async function handleFrame(frame: Gt06Frame, session: Session, socket: net.Socke
 async function applyLocationToAsset(
   target: AssetTarget,
   loc: NonNullable<ReturnType<typeof decodeLocation>>,
-  ignition?: boolean
+  ignition?: boolean,
+  serverReceivedAt?: Date
 ) {
   const result = await gt06Repo.applyPosition(target, {
     latitude: loc.latitude,
@@ -394,6 +404,7 @@ async function applyLocationToAsset(
     occurredAt: loc.timestamp,
     satellites: loc.satellites,
     ignition,
+    serverReceivedAt,
   });
 
   if (result.geofenceEvent) {
@@ -419,6 +430,7 @@ const server = net.createServer((socket) => {
   const session: Session = { mode: 'unknown', loginOk: false, locationOk: false, heartbeatOk: false, buffer: Buffer.alloc(0) };
 
   socket.on('data', (chunk) => {
+    const serverReceivedAt = new Date();
     if (HOMOLOG_MODE) logRawChunk(socket.remoteAddress ?? 'UNKNOWN', socket.remotePort ?? 0, chunk);
 
     session.buffer = Buffer.concat([session.buffer, chunk]);
@@ -451,7 +463,7 @@ const server = net.createServer((socket) => {
         }
       }
 
-      handleFrame(frame, session, socket, remote).catch((err) => {
+      handleFrame(frame, session, socket, remote, serverReceivedAt).catch((err) => {
         console.error(`[gt06-listener] erro processando frame de ${remote}:`, err);
       });
     }

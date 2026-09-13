@@ -11,7 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, AlertTriangle, Loader2, ArrowLeft } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { api } from '../lib/apiClient';
 
 // Espelha validateNewPassword() de server/api/passwordReset.ts. O servidor
 // continua sendo a autoridade (esta cópia só evita o round-trip pra dizer o
@@ -50,7 +50,7 @@ export const ResetPasswordPage: React.FC = () => {
       return;
     }
     (async () => {
-      const { data, error } = await supabase.auth.validatePasswordResetToken(token);
+      const { data, error } = await api.auth.validatePasswordResetToken(token);
       if (cancelled) return;
       if (error || !data?.valid) {
         setLink({
@@ -81,7 +81,7 @@ export const ResetPasswordPage: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    const { error } = await supabase.auth.confirmPasswordReset(token, password);
+    const { error } = await api.auth.confirmPasswordReset(token, password);
     setIsSubmitting(false);
     if (error) {
       setErrorMsg(error.message);
