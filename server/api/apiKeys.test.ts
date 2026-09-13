@@ -44,6 +44,7 @@ async function call(method: string, path: string, opts: { token?: string; apiKey
 async function cleanup() {
   await pool.query(`delete from assets where code like 'APIKEYTEST-%'`);
   await pool.query(`delete from user_profiles where email like 'apikeytest-%@example.com'`);
+  await pool.query(`delete from company_units where name like 'APIKEYTEST Unit%'`);
   // on delete cascade em api_keys.client_id leva as chaves junto.
   await pool.query(`delete from company_clients where code like 'APIKEYTEST-%'`);
 }
@@ -83,9 +84,14 @@ beforeAll(async () => {
       [`APIKEYTEST Tenant ${label}`, `APIKEYTEST-${label}`, cnpj]
     );
     ids[`tenant${label}`] = t.rows[0].id;
+    const u = await pool.query(
+      `insert into company_units (client_id, name, city, state, address, status) values ($1,$2,'SP','SP','x','active') returning id`,
+      [t.rows[0].id, `APIKEYTEST Unit ${label}`]
+    );
     const a = await pool.query(
-      `insert into assets (name, code, imei, category, client_id, status, protocol) values ($1,$2,$3,'asset',$4,'available','GT06') returning id`,
-      [`APIKEYTEST Asset ${label}`, `APIKEYTEST-ASSET-${label}`, `9900000000000${label === 'A' ? '01' : '02'}`, t.rows[0].id]
+      `insert into assets (name, code, imei, category, client_id, unit_id, status, protocol, unit_name)
+       values ($1,$2,$3,'asset',$4,$5,'available','GT06','un') returning id`,
+      [`APIKEYTEST Asset ${label}`, `APIKEYTEST-ASSET-${label}`, `9900000000000${label === 'A' ? '01' : '02'}`, t.rows[0].id, u.rows[0].id]
     );
     ids[`asset${label}`] = a.rows[0].id;
   }
