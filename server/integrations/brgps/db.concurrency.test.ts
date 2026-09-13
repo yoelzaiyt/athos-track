@@ -33,6 +33,17 @@ let target: PositionTarget;
 beforeAll(async () => {
   await cleanup();
 
+  // Garante que a coluna telemetry_server_received_at existe no banco de
+  // teste (migration 20260911010000_add_telemetry_server_received_at.sql).
+  // Se a migration já foi aplicada, o IF NOT EXISTS torna isso idempotente.
+  await pool.query(`
+    do $$ begin
+      if not exists (select 1 from information_schema.columns where table_name='assets' and column_name='telemetry_server_received_at') then
+        alter table assets add column telemetry_server_received_at timestamptz;
+      end if;
+    end $$;
+  `);
+
   const tenant = await pool.query(
     `insert into company_clients (name, code, cnpj, status, enabled_modules) values ('CONCTEST Tenant','CONCTEST-A','99.999.999/0001-99','active','["assets"]') returning id`
   );

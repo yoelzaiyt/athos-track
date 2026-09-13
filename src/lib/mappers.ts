@@ -100,6 +100,7 @@ const TELEMETRY_FIELDS: FieldMap = [
   ['idlingMinutesToday', 'telemetry_idling_minutes_today'],
   ['batteryRaw', 'telemetry_battery_raw'], ['batteryLevelCategory', 'telemetry_battery_level_category'],
   ['providerPublishedAt', 'telemetry_provider_published_at'],
+  ['serverReceivedAt', 'telemetry_server_received_at'],
 ];
 
 export function rowToAsset(row: Row): AssetDevice {
@@ -411,6 +412,8 @@ const UNIT_FIELDS: FieldMap = [
   ['address', 'address'], ['assetsCount', 'assets_count'], ['status', 'status'],
 ];
 
+export const unitToInsertRow = (unit: Omit<CompanyUnit, 'id'>): Row => toRow(unit, UNIT_FIELDS);
+
 // ===================== Homologação de Dispositivos (GT06) =====================
 
 const HOMOLOGATION_REQUEST_FIELDS: FieldMap = [
@@ -497,10 +500,17 @@ export const userProfileUpdatesToRow = (updates: Partial<UserProfile>): Row =>
 const INTEGRATION_FIELDS: FieldMap = [
   ['name', 'name'], ['type', 'type'], ['status', 'status'], ['lastPing', 'last_ping'],
   ['activeDevicesCount', 'active_devices_count'], ['endpointUrl', 'endpoint_url'], ['apiKey', 'api_key'],
+  ['provider', 'provider'],
 ];
 
 export const rowToIntegration = (row: Row): SystemIntegration =>
   ({ id: row.id, ...fromRow(row, INTEGRATION_FIELDS) } as SystemIntegration);
+
+export const integrationToInsertRow = (integration: Omit<SystemIntegration, 'id'>): Row =>
+  toRow(integration, INTEGRATION_FIELDS);
+
+export const integrationUpdatesToRow = (updates: Partial<SystemIntegration>): Row =>
+  toRowPartial(updates, INTEGRATION_FIELDS);
 
 // ===================== Pontos de Rota (breadcrumb histórico) =====================
 

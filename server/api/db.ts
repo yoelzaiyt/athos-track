@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
+import { sslFor } from './../db/connectionSsl';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -12,7 +13,7 @@ if (!connectionString) {
 // usuário — pra isso existe withTenantContext() abaixo.
 export const pool = new Pool({
   connectionString,
-  ssl: connectionString.includes('railway') || connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+  ssl: sslFor(connectionString),
 });
 
 // RLS real como segunda camada de defesa (ver SECURITY-GATE-REPORT.md —
@@ -26,7 +27,7 @@ const appConnectionString = process.env.APP_DATABASE_URL;
 const restrictedPool = appConnectionString
   ? new Pool({
       connectionString: appConnectionString,
-      ssl: appConnectionString.includes('railway') || appConnectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+      ssl: sslFor(appConnectionString),
     })
   : null;
 

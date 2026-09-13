@@ -21,3 +21,29 @@ export function formatRelativeTimePtBr(value: string | undefined): string {
   const diffDays = Math.round(diffH / 24);
   return `Há ${diffDays}d`;
 }
+
+const BRASILIA_TIMEZONE = 'America/Sao_Paulo';
+
+/**
+ * Data e hora absolutas no fuso de Brasília (dd/MM/aaaa HH:mm), para onde o
+ * relativo não serve — relatório exportado, por exemplo, em que "Há 5min" não
+ * diz nada depois de aberto no dia seguinte. Os timestamps chegam em UTC do
+ * banco; imprimi-los crus faz um pacote das 21:13 aparecer como o dia
+ * seguinte, que foi exatamente o bug relatado.
+ */
+export function formatDateTimeBrasilia(value: string | undefined): string {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value; // rótulo tipo "Agora"/"Nunca comunicou"
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: BRASILIA_TIMEZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}

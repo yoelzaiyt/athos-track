@@ -33,6 +33,8 @@ export interface PositionInput {
   occurredAt: Date;
   satellites: number;
   ignition?: boolean;
+  /** T3: instante em que o servidor recebeu o pacote (capturado em socket.on('data')). */
+  serverReceivedAt?: Date;
 }
 
 export interface GeofenceEventResult {
@@ -127,16 +129,18 @@ export class Gt06Repository {
          telemetry_latitude = $1, telemetry_longitude = $2, telemetry_speed = $3,
          telemetry_heading = $4,
          telemetry_last_communication = $5, telemetry_packet_timestamp = $5,
+         telemetry_server_received_at = $6,
          telemetry_position_source = 'GPS Satellite',
-         telemetry_ignition = coalesce($6, telemetry_ignition),
-         status = $7, provider = 'GT06', updated_at = now()
-       where id = $8`,
+         telemetry_ignition = coalesce($7, telemetry_ignition),
+         status = $8, provider = 'GT06', updated_at = now()
+       where id = $9`,
       [
         position.latitude,
         position.longitude,
         position.speedKmh,
         position.course,
         position.occurredAt.toISOString(),
+        position.serverReceivedAt?.toISOString() ?? new Date().toISOString(),
         position.ignition ?? null,
         nextStatus,
         target.assetId,

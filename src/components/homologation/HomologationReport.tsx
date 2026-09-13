@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/apiClient';
 import { homologationReportToInsertRow } from '../../lib/mappers';
 import type { HomologationRequest, HomologationResult } from '../../types/homologation';
 
@@ -42,7 +42,7 @@ export const HomologationReport: React.FC<Props> = ({ request, deviceId, checks 
         : 'PENDENTE';
     setResult(finalResult);
 
-    supabase
+    api
       .from('homologation_reports')
       .insert(
         homologationReportToInsertRow({

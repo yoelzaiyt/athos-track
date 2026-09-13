@@ -18,5 +18,13 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    // maplibre-gl builds its worker with `new Worker(url, { type: 'module' })`.
+    // Vite's dep pre-bundler rewrites that URL into a `.vite/deps/` chunk that
+    // never resolves as a worker, leaving the map canvas permanently blank in
+    // dev (tiles fetch fine, nothing ever paints). Excluding it from
+    // optimizeDeps keeps the worker's own `import.meta.url` intact.
+    optimizeDeps: {
+      exclude: ['maplibre-gl'],
+    },
   };
 });

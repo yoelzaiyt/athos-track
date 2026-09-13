@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle2, Circle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/apiClient';
 import { homologationDeviceToInsertRow, homologationEventToInsertRow } from '../../lib/mappers';
 import { GT06DemoAdapter } from '../../homologation/adapters/gt06DemoAdapter';
 import { maskImei } from '../../homologation/mask';
@@ -45,7 +45,7 @@ export const DeviceTestPanel: React.FC<Props> = ({ request, onEvent, onCompleted
     // tabela, então o id é gerado no cliente e enviado explicitamente — pedir
     // a linha de volta via .select() falharia contra a RLS de leitura.
     const deviceId = crypto.randomUUID();
-    const { error: deviceError } = await supabase
+    const { error: deviceError } = await api
       .from('homologation_devices')
       .insert({
         id: deviceId,
@@ -73,7 +73,7 @@ export const DeviceTestPanel: React.FC<Props> = ({ request, onEvent, onCompleted
       onEvent({ ...evt, imeiMasked });
 
       if (evt.status !== 'pending') {
-        const { error: eventError } = await supabase.from('homologation_events').insert(
+        const { error: eventError } = await api.from('homologation_events').insert(
           homologationEventToInsertRow({
             requestId: request.id,
             deviceId: deviceError ? undefined : deviceId,

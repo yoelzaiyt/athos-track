@@ -1,7 +1,21 @@
 import React, { useRef, useState } from 'react';
 import { ShieldCheck, ArrowRight, Lock, Mail, Eye, EyeOff, Satellite } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, type LoginFailureReason } from '../context/AuthContext';
 import worldMapImg from '../assets/images/login-world-map.png';
+
+// Mensagem por motivo real da falha. Antes, qualquer erro virava "Credenciais
+// inválidas" — inclusive um 500 de erro de SQL, que mandava o usuário conferir
+// uma senha que estava certa. Nenhuma destas mensagens revela se o e-mail
+// existe (o backend responde 401 igual para e-mail inexistente e senha errada).
+const LOGIN_ERROR_MESSAGES: Record<LoginFailureReason, string> = {
+  invalid_credentials: 'Credenciais inválidas. Verifique seu e-mail e senha.',
+  inactive: 'Esta conta está desativada. Procure um administrador.',
+  rate_limited: 'Muitas tentativas de login. Aguarde alguns minutos e tente de novo.',
+  server_error:
+    'Erro no servidor ao tentar entrar — não é problema da sua senha. Se persistir, avise o suporte técnico.',
+  unreachable:
+    'Não foi possível falar com o servidor. Verifique sua conexão; se a internet está OK, a API pode estar fora do ar.',
+};
 
 // Satélite orbitando um hub central — dois anéis girando em sentidos opostos
 // (o externo carrega o satélite, o interno gira ao contrário na mesma
@@ -46,10 +60,10 @@ export const Login: React.FC = () => {
     setErrorMsg('');
     setInfoMsg('');
     setIsSubmitting(true);
-    const success = await login(email, password);
+    const result = await login(email, password);
     setIsSubmitting(false);
-    if (!success) {
-      setErrorMsg('Credenciais inválidas. Verifique seu e-mail e senha.');
+    if (!result.ok) {
+      setErrorMsg(LOGIN_ERROR_MESSAGES[result.reason]);
     }
   };
 

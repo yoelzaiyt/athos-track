@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileBarChart2, Download, FileText, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
+import { formatDateTimeBrasilia } from '../lib/format';
 
 function todayPtBr(): string {
   return new Date().toLocaleDateString('pt-BR');
@@ -29,7 +30,7 @@ export const ReportsPage: React.FC = () => {
   const handleExportCsv = () => {
     const headers = ['tipo_relatorio', 'empresa', 'codigo', 'nome', 'categoria', 'status', 'ultima_comunicacao'];
     const rows = assets.map((a) =>
-      [reportType, tenantName, a.code, a.name, a.category, a.status, a.telemetry.lastCommunication]
+      [reportType, tenantName, a.code, a.name, a.category, a.status, formatDateTimeBrasilia(a.telemetry.lastCommunication)]
         .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
         .join(',')
     );

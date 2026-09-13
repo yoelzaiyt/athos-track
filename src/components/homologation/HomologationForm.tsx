@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { api } from '../../lib/apiClient';
 import { homologationRequestToInsertRow } from '../../lib/mappers';
 import {
   HomologationRequest,
@@ -153,7 +153,7 @@ export const HomologationForm: React.FC<Props> = ({ onSubmitted }) => {
     const sessionToken = crypto.randomUUID();
     const createdAt = new Date().toISOString();
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await api
       .from('homologation_requests')
       .insert({ id, session_token: sessionToken, ...homologationRequestToInsertRow(payload) });
 

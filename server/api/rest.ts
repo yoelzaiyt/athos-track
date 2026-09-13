@@ -37,6 +37,7 @@ import type { Request } from 'express';
 import { pool, withTenantContext } from './db';
 import { requireAuth, type AuthTokenPayload } from './auth';
 import { writeAuditLog } from './audit';
+import { apiRateLimit } from './rateLimit';
 
 // Mesma lista de tabelas hoje consultadas via supabase-js em src/context/*.tsx.
 const ALLOWED_TABLES = new Set([
@@ -525,6 +526,7 @@ async function assertAssetBelongsToTenant(table: string, auth: AuthTokenPayload,
 
 export const restRouter = Router();
 restRouter.use(requireAuth);
+restRouter.use(...apiRateLimit.middleware);
 
 restRouter.param('table', (req, res, next, table: string) => {
   if (!ALLOWED_TABLES.has(table)) {
