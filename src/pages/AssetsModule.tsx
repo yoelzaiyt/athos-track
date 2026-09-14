@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Box, Tag, User, MapPin, BatteryCharging, Radio, CheckCircle2, AlertTriangle, Shield, Layers, Map as MapIcon } from 'lucide-react';
+import { Box, Tag, BatteryCharging, Radio, CheckCircle2, AlertTriangle, Shield, Layers, Map as MapIcon } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
-import { DataTable, Column } from '../components/common/DataTable';
+import { DataTable } from '../components/common/DataTable';
 import { LiveMap } from '../components/map/LiveMap';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
-import { AssetIcon } from '../components/common/AssetIconRegistry';
+import { assetColumns } from './columns/assetColumns';
 
 export const AssetsModule: React.FC = () => {
   const { selectedClientId, selectedUnitId } = useAuth();
@@ -20,72 +20,7 @@ export const AssetsModule: React.FC = () => {
   const inOperationCount = assets.filter((a) => a.status === 'in_use' || a.status === 'moving' || a.status === 'online').length;
   const movementAlertsCount = assets.filter((a) => a.status === 'out_of_geofence' || a.status === 'low_battery').length;
 
-  const columns: Column<AssetDevice>[] = [
-    {
-      header: 'Ativo / Equipamento',
-      accessor: (row) => (
-        <div>
-          <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 font-mono">
-            <div className="p-1 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-              <AssetIcon category={row.category} subcategory={row.subcategory} className="w-4 h-4" />
-            </div>
-            <span>{row.name}</span>
-          </div>
-          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">Patrimônio: {row.code}</div>
-        </div>
-      ),
-    },
-    {
-      header: 'Categoria',
-      accessor: (row) => (
-        <span className="px-2 py-0.5 text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 rounded font-medium uppercase">
-          {row.category === 'asset' ? 'Equipamento Especial' : 'Tag de Ativo'}
-        </span>
-      ),
-    },
-    {
-      header: 'Responsável',
-      accessor: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-          <User className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-          <span>{row.responsibleName || '—'}</span>
-        </div>
-      ),
-    },
-    {
-      header: 'Localização / Unidade',
-      accessor: (row) => (
-        <div>
-          <div className="text-slate-700 dark:text-slate-200 font-medium">{row.unitName}</div>
-          <div className="text-[10px] text-slate-500 dark:text-slate-400">{row.geofenceName || '—'}</div>
-        </div>
-      ),
-    },
-    {
-      header: 'Tag / Protocolo',
-      accessor: (row) => (
-        <span className="font-mono text-cyan-600 dark:text-cyan-400 text-[11px]">{row.protocol}</span>
-      ),
-    },
-    {
-      header: 'Bateria',
-      accessor: (row) => (
-        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{row.telemetry.batteryLevel}%</span>
-      ),
-    },
-    {
-      header: 'Status',
-      accessor: (row) => (
-        <span className="px-2 py-0.5 text-[10px] font-bold font-mono rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase">
-          {row.status}
-        </span>
-      ),
-    },
-    {
-      header: 'Última Movimentação',
-      accessor: 'lastMovement',
-    },
-  ];
+  const columns = assetColumns;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">

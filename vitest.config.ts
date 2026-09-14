@@ -18,6 +18,7 @@ import { defineConfig } from 'vitest/config';
 // exige dizer isso explicitamente (test:db/test:all).
 const DB_TESTS = [
   'server/api/rbac.test.ts',
+  'server/api/password-reset.test.ts',
   'server/api/realtime.test.ts',
   'server/api/tag-classification.test.ts',
   'server/api/apiKeys.test.ts',
@@ -42,7 +43,7 @@ export default defineConfig({
           include: DB_TESTS,
           // Integração real contra um banco compartilhado: em paralelo esses
           // arquivos disputam as mesmas linhas (os tenants ZAFFARI/SAO-JOAO)
-          // e o cleanup de um derruba o setup do outro. singleFork = os 4
+          // e o cleanup de um derruba o setup do outro. singleFork = os 5
           // rodam em sequência, num processo só (`fileParallelism` não é
           // aceito em config de project, só na raiz).
           pool: 'forks',
