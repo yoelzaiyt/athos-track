@@ -1,22 +1,13 @@
 import React, { useState } from 'react';
-import { ShoppingCart, BatteryLow, ShieldAlert, Wrench, Radio, MapPin, CheckCircle2, Map as MapIcon, ShieldCheck, Camera, Satellite } from 'lucide-react';
+import { ShoppingCart, BatteryLow, ShieldAlert, Wrench, Radio, CheckCircle2, Map as MapIcon, ShieldCheck, Camera } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
-import { DataTable, Column } from '../components/common/DataTable';
+import { DataTable } from '../components/common/DataTable';
 import { LiveMap } from '../components/map/LiveMap';
 import { RecoveryFormModal } from '../components/common/RecoveryFormModal';
 import { useAssets } from '../context/AssetContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetDevice } from '../types';
-import { AssetIcon } from '../components/common/AssetIconRegistry';
-import { formatRelativeTimePtBr } from '../lib/format';
-
-const BATTERY_LABEL: Record<string, string> = {
-  UNKNOWN: 'Desconhecida',
-  CRITICAL: 'Crítica',
-  LOW: 'Baixa',
-  MEDIUM: 'Média',
-  HIGH: 'Alta',
-};
+import { cartColumns } from './columns/cartColumns';
 
 export const CartsModule: React.FC = () => {
   const { selectedClientId, selectedUnitId, user } = useAuth();
@@ -40,114 +31,7 @@ export const CartsModule: React.FC = () => {
   ).length;
   const maintenance = cartAssets.filter((c) => c.status === 'maintenance').length;
 
-  const columns: Column<AssetDevice>[] = [
-    {
-      header: 'ID / Patrimônio',
-      accessor: (row) => (
-        <div>
-          <div className="font-bold text-slate-100 flex items-center gap-2 font-mono">
-            <div className="p-1 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-              <AssetIcon category="cart" subcategory={row.subcategory} className="w-4 h-4" />
-            </div>
-            <span>{row.code}</span>
-          </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{row.name}</div>
-        </div>
-      ),
-    },
-    {
-      header: 'Unidade',
-      accessor: 'unitName',
-    },
-    {
-      header: 'Tag BLE / IMEI',
-      accessor: (row) => (
-        <span className="font-mono text-cyan-400 text-[11px]">{row.imei}</span>
-      ),
-    },
-    {
-      header: 'Status Perímetro',
-      accessor: (row) => (
-        <span
-          className={`px-2 py-0.5 text-[10px] font-bold font-mono rounded-full uppercase ${
-            row.status === 'out_of_geofence'
-              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              : row.status === 'low_battery'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-          }`}
-        >
-          {row.status === 'out_of_geofence'
-            ? 'Fora da Loja'
-            : row.status === 'low_battery'
-            ? 'Bateria Baixa'
-            : 'Dentro do Perímetro'}
-        </span>
-      ),
-    },
-    {
-      header: 'Bateria',
-      accessor: (row) => {
-        // Provider real (BRGPS) só informa faixa -1..3, não porcentagem —
-        // nunca inventar "%" pra esses; mostrar a categoria (seção 34 do brief).
-        if (row.provider && row.telemetry.batteryLevelCategory) {
-          const cat = row.telemetry.batteryLevelCategory;
-          const color =
-            cat === 'CRITICAL' ? 'text-rose-400' : cat === 'LOW' ? 'text-amber-400' : cat === 'UNKNOWN' ? 'text-slate-400' : 'text-emerald-400';
-          return <span className={`font-mono font-bold ${color}`}>{BATTERY_LABEL[cat]}</span>;
-        }
-        return (
-          <span className={`font-mono font-bold ${row.telemetry.batteryLevel < 20 ? 'text-rose-400' : 'text-emerald-400'}`}>
-            {row.telemetry.batteryLevel}%
-          </span>
-        );
-      },
-    },
-    {
-      // geofenceName é o nome da cerca virtual (quando o asset tem uma
-      // configurada), não a localização em si — pra um provider real
-      // (BRGPS/BRGPS_2), mostrar a coordenada real recebida. Sem posição
-      // real ainda, nunca inventar coordenada (seção "MAPA" do brief) — só
-      // "Aguardando primeira localização real".
-      header: 'Última Localização',
-      accessor: (row) => (
-        <div className="text-[11px] text-slate-300 flex items-center gap-1">
-          <MapPin className="w-3 h-3 text-cyan-400" />
-          <span>
-            {row.telemetry.latitude && row.telemetry.longitude
-              ? `${row.telemetry.latitude.toFixed(5)}, ${row.telemetry.longitude.toFixed(5)}`
-              : row.provider
-                ? 'Aguardando primeira localização real'
-                : row.geofenceName || '—'}
-          </span>
-        </div>
-      ),
-    },
-    {
-      // provider truthy = veio de um fornecedor real (BRGPS ou BRGPS_2, a
-      // segunda conta ativada em 2026-09-10 — ver docs/HARDWARE-CATALOG.md).
-      // Comparar com a string literal 'BRGPS' excluía BRGPS_2 e mostrava
-      // "Simulado" pra tags com posição real de verdade (achado ao vivo
-      // nesta sessão, com as 10 tags Zaffari).
-      header: 'Origem',
-      accessor: (row) =>
-        row.provider ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 border border-cyan-500/20 rounded">
-            <Satellite className="w-3 h-3" /> API {row.provider.replace('_2', ' (conta 2)')}
-          </span>
-        ) : (
-          <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">Simulado</span>
-        ),
-    },
-    {
-      header: 'Última Comunicação',
-      accessor: (row) => (
-        <span className="font-mono text-slate-400">
-          {row.provider ? formatRelativeTimePtBr(row.telemetry.lastCommunication) : row.telemetry.lastCommunication}
-        </span>
-      ),
-    },
-  ];
+  const columns = cartColumns;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
