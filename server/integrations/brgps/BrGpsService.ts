@@ -69,7 +69,16 @@ export class BrGpsService {
           summary.deduped += 1;
           continue;
         }
-        if (result.positionUpdated) summary.applied += 1;
+        if (result.positionUpdated) {
+          summary.applied += 1;
+          const ageSeconds = Math.round((position.receivedAt.getTime() - position.occurredAt.getTime()) / 1000);
+          console.log(
+            `[brgps-service] tag atualizada: ${target.assetCode} (device ${position.externalDeviceId}) ` +
+            `lat=${position.latitude.toFixed(6)} lng=${position.longitude.toFixed(6)} ` +
+            `ocorrida=${position.occurredAt.toISOString()} idade=${ageSeconds}s ` +
+            `mapa=https://www.google.com/maps?q=${position.latitude},${position.longitude}`
+          );
+        }
 
         if (result.geofenceEvent) {
           summary.geofenceEvents += 1;
