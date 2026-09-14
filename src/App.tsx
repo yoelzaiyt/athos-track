@@ -30,6 +30,7 @@ import { SettingsPage } from './pages/admin/SettingsPage';
 import { HomologationAdminPage } from './pages/admin/HomologationAdminPage';
 import { LatencyDiagnosticsPage } from './pages/admin/LatencyDiagnosticsPage';
 import { HomologationPortalPage } from './pages/public/HomologationPortalPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 const AuthenticatedShell: React.FC = () => {
   const [currentModule, setCurrentModule] = useState<string>('dashboard');
@@ -158,6 +159,10 @@ export default function App() {
     <Routes>
       {/* Rota pública: sem AuthProvider/gate — fornecedores homologam sem login. */}
       <Route path="/homologacao/*" element={<HomologationPortalPage />} />
+      {/* Rota pública pelo mesmo motivo (SEC-010 fase 2): quem chega aqui não
+          consegue logar — é exatamente esse o problema que veio resolver. O
+          token do e-mail é a credencial desta tela, validado no servidor. */}
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
       <Route
         path="*"
         element={

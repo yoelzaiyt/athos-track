@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lint + build + os 109 testes que não precisam de banco. Roda em qualquer
+  # Lint + build + os testes que não precisam de banco. Roda em qualquer
   # máquina, sem nenhum secret.
   check:
     name: Lint, build e testes unitários
@@ -44,7 +44,7 @@ jobs:
           path: dist
           retention-days: 7
 
-  # Os 4 arquivos de teste de integração real: sobem a API numa porta efêmera,
+  # Os 5 arquivos de teste de integração real: sobem a API numa porta efêmera,
   # fazem login de verdade e gravam no Postgres. Aqui o banco é um container
   # descartável, migrado do zero pelo próprio repo — nunca o banco do Railway.
   test-db:
